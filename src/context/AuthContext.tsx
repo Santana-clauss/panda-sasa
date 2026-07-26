@@ -10,6 +10,7 @@ type AuthContextValue = {
   isGuest: boolean;
   loading: boolean;
   detectedCounty: string | null;
+  detectedCoords: { latitude: number; longitude: number } | null;
   detectingLocation: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string, name: string) => Promise<{ error: string | null }>;
@@ -26,16 +27,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isGuest, setIsGuest] = useState(false);
   const [loading, setLoading] = useState(true);
   const [detectedCounty, setDetectedCounty] = useState<string | null>(null);
+  const [detectedCoords, setDetectedCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [detectingLocation, setDetectingLocation] = useState(false);
 
-  // Auto-detect the user's county via browser geolocation. Used as the default
-  // for guests and for users whose profile doesn't specify a county yet.
+  // Auto-detect the user's exact location via browser geolocation. Used as the
+  // default for guests and for users whose profile doesn't specify a county yet.
+  // The exact coordinates are used for weather and soil lookups so data is
+  // specific to the farmer's actual farm, not just the county center.
   useEffect(() => {
     let cancelled = false;
     setDetectingLocation(true);
     detectLocation()
       .then((loc) => {
-        if (!cancelled) setDetectedCounty(loc.county.name);
+        if (cancelled) return;
+        setDetectedCounty(loc.county.name);
+        setDetectedCoords({ latitude: loc.latitude, longitude: loc.longitude });
       })
       .catch(() => {
         // Silently fall back to the default county (Nakuru).
@@ -118,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, user: session?.user ?? null, profile, isGuest, loading, detectedCounty, detectingLocation, signIn, signUp, signInAsGuest, signOut, refreshProfile }}
+      value={{ session, user: session?.user ?? null, profile, isGuest, loading, detectedCounty, detectedCoords, detectingLocation, signIn, signUp, signInAsGuest, signOut, refreshProfile }}
     >
       {children}
     </AuthContext.Provider>

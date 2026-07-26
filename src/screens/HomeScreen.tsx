@@ -9,7 +9,7 @@ import { WeatherIcon } from '@/components/ui';
 import type { TabKey } from '@/components/BottomNav';
 
 export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => void }) {
-  const { profile, isGuest, detectedCounty } = useAuth();
+  const { profile, isGuest, detectedCounty, detectedCoords } = useAuth();
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [rankings, setRankings] = useState<CropRanking[]>([]);
   const [weatherSummary, setWeatherSummary] = useState<string | null>(null);
@@ -19,6 +19,13 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
 
   const county = profile?.county ?? detectedCounty ?? 'Nakuru';
   const countyInfo = useMemo(() => COUNTIES.find((c) => c.name === county), [county]);
+
+  // Use the user's exact GPS coordinates for weather and soil lookups when
+  // available. Falls back to the county center only if GPS was denied.
+  const lookupCoords = useMemo(
+    () => detectedCoords ?? (countyInfo ? { latitude: countyInfo.latitude, longitude: countyInfo.longitude } : null),
+    [detectedCoords, countyInfo],
+  );
 
   useEffect(() => {
     setRankings(recommendCrops(county));
@@ -38,8 +45,8 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
   }, [isGuest]);
 
   useEffect(() => {
-    if (!countyInfo) return;
-    fetchWeather(countyInfo.latitude, countyInfo.longitude)
+    if (!lookupCoords) return;
+    fetchWeather(lookupCoords.latitude, lookupCoords.longitude)
       .then((w) => {
         setWeatherCode(w.current.weatherCode);
         setTemp(w.current.temp);
@@ -47,7 +54,7 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
         if (recs.length) setWeatherSummary(recs[0].text);
       })
       .catch(() => setWeatherSummary(null));
-  }, [countyInfo]);
+  }, [lookupCoords]);
 
   useEffect(() => {
     if (!seasons.length) {

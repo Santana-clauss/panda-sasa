@@ -6,7 +6,7 @@ import { fetchWeather, weatherToRecommendations, weatherLabel, type WeatherData,
 import { WeatherIcon } from '@/components/ui';
 
 export default function WeatherScreen() {
-  const { profile, detectedCounty } = useAuth();
+  const { profile, detectedCounty, detectedCoords } = useAuth();
   const countyName = profile?.county ?? detectedCounty ?? 'Nakuru';
   const county = COUNTIES.find((c) => c.name === countyName) ?? COUNTIES[0];
   const [weather, setWeather] = useState<WeatherData | null>(null);
@@ -14,10 +14,13 @@ export default function WeatherScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Use exact GPS coordinates when available; fall back to county center.
+  const coords = detectedCoords ?? { latitude: county.latitude, longitude: county.longitude };
+
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetchWeather(county.latitude, county.longitude)
+    fetchWeather(coords.latitude, coords.longitude)
       .then((w) => {
         setWeather(w);
         setRecs(weatherToRecommendations(w.daily));
@@ -27,7 +30,7 @@ export default function WeatherScreen() {
         setError(e.message ?? 'Failed to load weather');
         setLoading(false);
       });
-  }, [countyName]);
+  }, [coords.latitude, coords.longitude]);
 
   if (loading) {
     return (
