@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Sprout, MapPin, Calendar, ChevronDown, ChevronRight, Check, Clock,
   TrendingUp, Info, Plus, ListChecks, Wheat, AlertCircle, LocateFixed, Loader2,
-  CircleDot, Leaf, Droplets, Bug, Scissors, Package, Eye,
+  CircleDot, Leaf, Droplets, Bug, Scissors, Package, Eye, Layers, Mountain,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase, type Season, type Activity } from '@/lib/supabase';
@@ -13,6 +13,7 @@ import {
 } from '@/lib/recommendations';
 import { fetchWeather } from '@/lib/weather';
 import { detectLocation } from '@/lib/location';
+import { fetchSoilData, soilRecommendationsForCrop, type SoilData, type SoilRecommendation } from '@/lib/soil';
 
 type View = 'guidance' | 'plan' | 'crops' | 'seasons';
 
@@ -121,6 +122,7 @@ const CATEGORY_META: Record<string, { icon: typeof Leaf; color: string; bg: stri
 function GuidanceTimeline({ seasons, onUpdated }: { seasons: Season[]; onUpdated: () => void }) {
   const [activeSeasonId, setActiveSeasonId] = useState(seasons[0]?.id ?? '');
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [soilData, setSoilData] = useState<SoilData | null>(null);
 
   const season = seasons.find((s) => s.id === activeSeasonId) ?? seasons[0];
   const cropInfo = getCrop(season?.crop ?? '');
@@ -138,6 +140,14 @@ function GuidanceTimeline({ seasons, onUpdated }: { seasons: Season[]; onUpdated
 
   useEffect(() => {
     loadActivities();
+  }, [season?.id]);
+
+  // Fetch soil data for the season's county
+  useEffect(() => {
+    if (!season) return;
+    const countyInfo = COUNTIES.find((c) => c.name === season.county);
+    if (!countyInfo) return;
+    fetchSoilData(countyInfo.latitude, countyInfo.longitude).then(setSoilData).catch(() => {});
   }, [season?.id]);
 
   async function toggleActivity(act: Activity) {
@@ -263,6 +273,9 @@ function GuidanceTimeline({ seasons, onUpdated }: { seasons: Season[]; onUpdated
         </p>
       </div>
 
+      {/* Soil context from ISRIC SoilGrids */}
+      {soilData && <SoilCard soil={soilData} crop={season.crop} />}
+
       {/* Full week-by-week timeline */}
       <div className="bg-surface-container-lowest rounded-2xl p-5 shadow-sm">
         <h3 className="font-semibold text-on-surface mb-3 flex items-center gap-2">
@@ -382,6 +395,8 @@ function PlantingForm({ county, onSaved }: { county: string; onSaved: () => void
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [locMsg, setLocMsg] = useState<string | null>(null);
+  const [soilData, setSoilData] = useState<SoilData | null>(null);
+  const [soilLoading, setSoilLoading] = useState(false);
 
   const countyInfo = useMemo(() => COUNTIES.find((c) => c.name === selectedCounty), [selectedCounty]);
   const cropInfo = useMemo(() => getCrop(crop), [crop]);
@@ -406,12 +421,18 @@ function PlantingForm({ county, onSaved }: { county: string; onSaved: () => void
     setAnalyzing(true);
     setSaveMsg(null);
     let rainfallForecast: number | undefined;
+    let soil: SoilData | undefined;
     if (countyInfo) {
       try {
-        const w = await fetchWeather(countyInfo.latitude, countyInfo.longitude);
-        rainfallForecast = w.daily.slice(0, 14).reduce((s, d) => s + d.precipitation, 0);
+        const [w, s] = await Promise.all([
+          fetchWeather(countyInfo.latitude, countyInfo.longitude),
+          fetchSoilData(countyInfo.latitude, countyInfo.longitude),
+        ]);
+        rainfallForecast = w.daily.slice(0, 14).reduce((sum, d) => sum + d.precipitation, 0);
+        soil = s;
+        setSoilData(s);
       } catch {
-        // ignore weather failure
+        // ignore fetch failure
       }
     }
     const decision = analyzePlanting({
@@ -421,6 +442,7 @@ function PlantingForm({ county, onSaved }: { county: string; onSaved: () => void
       plantingDate: dateRec.startDate,
       variety: variety || undefined,
       rainfallForecast,
+      soil,
     });
     setResult(decision);
     setAnalyzing(false);
@@ -537,19 +559,20 @@ function PlantingForm({ county, onSaved }: { county: string; onSaved: () => void
       </div>
 
       {result && (
-        <ResultCard decision={result} crop={crop} onSave={saveSeason} saveMsg={saveMsg} />
+        <ResultCard decision={result} crop={crop} onSave={saveSeason} saveMsg={saveMsg} soilData={soilData} />
       )}
     </div>
   );
 }
 
 function ResultCard({
-  decision, crop, onSave, saveMsg,
+  decision, crop, onSave, saveMsg, soilData,
 }: {
   decision: PlantingDecision;
   crop: string;
   onSave: () => void;
   saveMsg: string | null;
+  soilData: SoilData | null;
 }) {
   const verdictColor =
     decision.verdict === 'Plant Now'
@@ -587,6 +610,9 @@ function ResultCard({
         </ul>
       </div>
 
+      {/* Soil analysis from ISRIC SoilGrids */}
+      {soilData && <SoilCard soil={soilData} crop={crop} />}
+
       <button
         onClick={onSave}
         className="w-full bg-primary-container text-on-primary font-semibold py-3 rounded-full hover:bg-primary transition-colors"
@@ -596,6 +622,89 @@ function ResultCard({
       {saveMsg && (
         <p className={`text-sm text-center ${saveMsg.startsWith('Error') ? 'text-error' : 'text-primary'}`}>{saveMsg}</p>
       )}
+    </div>
+  );
+}
+
+/* ---------- Soil Card (ISRIC SoilGrids data) ---------- */
+
+function SoilCard({ soil, crop }: { soil: SoilData; crop: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const recs = useMemo(() => soilRecommendationsForCrop(soil, crop), [soil, crop]);
+
+  const phColor = soil.ph < 5.5 ? 'text-error' : soil.ph > 7.5 ? 'text-error' : 'text-primary';
+  const phLabel = soil.ph < 5.5 ? 'Acidic' : soil.ph > 7.5 ? 'Alkaline' : 'Optimal';
+
+  return (
+    <div className="bg-surface-container-lowest rounded-2xl p-5 shadow-sm space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-on-surface flex items-center gap-1.5">
+          <Layers size={15} className="text-primary" /> Soil Analysis
+        </h4>
+        <span className="text-[10px] text-outline bg-surface-container-high px-2 py-0.5 rounded-full">{soil.source}</span>
+      </div>
+
+      {/* Soil type + drainage summary */}
+      <div className="flex items-center gap-3 bg-surface-container-high rounded-xl p-3">
+        <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center shrink-0">
+          <Mountain size={20} className="text-primary" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-on-surface">{soil.soilType}</p>
+          <p className="text-xs text-on-surface-variant">{soil.drainage}</p>
+        </div>
+      </div>
+
+      {/* Key metrics grid */}
+      <div className="grid grid-cols-3 gap-2">
+        <SoilMetric label="pH" value={soil.ph.toFixed(1)} tone={phColor} sub={phLabel} />
+        <SoilMetric label="Org. Carbon" value={`${soil.organicCarbon.toFixed(1)}`} unit="g/kg" />
+        <SoilMetric label="Nitrogen" value={soil.nitrogen.toFixed(1)} unit="cg/kg" />
+        <SoilMetric label="Phosphorus" value={soil.phosphorus.toFixed(1)} unit="mg/kg" />
+        <SoilMetric label="Potassium" value={soil.potassium.toFixed(2)} unit="cmolc/kg" />
+        <SoilMetric label="Water Cap." value={`${soil.waterHoldingCapacity}`} unit="mm/m" />
+      </div>
+
+      {/* Texture breakdown */}
+      <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+        <span className="font-medium">Texture:</span>
+        <span>Clay {soil.clayContent}%</span>
+        <span>Sand {soil.sandContent}%</span>
+        <span>Silt {soil.siltContent}%</span>
+      </div>
+
+      {/* Toggle detailed view */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="text-xs text-primary font-medium flex items-center gap-1"
+      >
+        {expanded ? 'Hide' : 'Show'} soil recommendations
+        {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+      </button>
+
+      {expanded && recs.length > 0 && (
+        <div className="space-y-1.5 pt-1">
+          {recs.map((r, i) => (
+            <div key={i} className="flex items-start gap-2 text-xs">
+              <span className={`shrink-0 mt-0.5 ${r.tone === 'good' ? 'text-primary' : r.tone === 'critical' ? 'text-error' : 'text-tertiary'}`}>
+                {r.tone === 'good' ? '✓' : r.tone === 'critical' ? '!' : '•'}
+              </span>
+              <span className="text-on-surface-variant">{r.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SoilMetric({ label, value, unit, tone, sub }: { label: string; value: string; unit?: string; tone?: string; sub?: string }) {
+  return (
+    <div className="bg-surface-container-high rounded-lg p-2 text-center">
+      <p className="text-[10px] text-outline">{label}</p>
+      <p className={`text-sm font-semibold ${tone ?? 'text-on-surface'}`}>{value}</p>
+      {unit && <p className="text-[9px] text-outline">{unit}</p>}
+      {sub && <p className={`text-[9px] ${tone ?? 'text-outline'}`}>{sub}</p>}
     </div>
   );
 }

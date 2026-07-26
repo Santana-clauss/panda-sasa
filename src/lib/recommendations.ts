@@ -1,6 +1,7 @@
 // Decision engine: planting advisor, crop ranking, variety selection, harvest, storage risk
 import { COUNTIES, CROPS, MONTH_TO_NUM, getCounty, getCrop, type County, type CropInfo } from './data';
 import type { DailyForecast } from './weather';
+import type { SoilData } from './soil';
 
 export type PlantingDecision = {
   verdict: 'Plant Now' | 'Wait' | 'Not Recommended';
@@ -110,6 +111,7 @@ export function analyzePlanting(input: {
   plantingDate?: string; // optional — defaults to recommended date
   variety?: string;
   rainfallForecast?: number; // mm expected next 14 days
+  soil?: SoilData; // optional soil data from ISRIC SoilGrids
 }): PlantingDecision {
   const county = getCounty(input.county);
   const crop = getCrop(input.crop);
@@ -253,6 +255,50 @@ export function analyzePlanting(input: {
     verdict = 'Wait';
     confidence = Math.min(confidence, 55);
     explanations.push('With dry conditions forecast, waiting 3-5 days for rainfall will improve germination.');
+  }
+
+  // Soil-based recommendations (from ISRIC SoilGrids)
+  if (input.soil) {
+    const soil = input.soil;
+    explanations.push(`Soil: ${soil.soilType} (pH ${soil.ph.toFixed(1)}, ${soil.organicCarbon.toFixed(1)} g/kg organic carbon, ${soil.nitrogen.toFixed(1)} cg/kg N). Source: ${soil.source}.`);
+
+    if (soil.ph < 5.5) {
+      explanations.push(`Soil pH is acidic (${soil.ph.toFixed(1)}). Apply agricultural lime (1-2 t/ha) 2-3 weeks before planting to raise pH for ${crop.name}.`);
+      confidence = Math.max(0, confidence - 5);
+    } else if (soil.ph > 7.5) {
+      explanations.push(`Soil pH is alkaline (${soil.ph.toFixed(1)}). Apply gypsum or organic matter to lower pH for optimal ${crop.name} growth.`);
+      confidence = Math.max(0, confidence - 5);
+    } else {
+      explanations.push(`Soil pH (${soil.ph.toFixed(1)}) is in the suitable range for ${crop.name}.`);
+    }
+
+    if (soil.nitrogen < 8) {
+      explanations.push(`Low nitrogen in soil — plan 2 splits of urea top-dressing (Week 4 and Week 7).`);
+    } else if (soil.nitrogen > 20) {
+      explanations.push(`Good nitrogen levels — reduce N fertilizer by 20-30% to avoid lodging and save costs.`);
+    }
+
+    if (soil.phosphorus < 5) {
+      explanations.push(`Low phosphorus — apply DAP or TSP at planting (50-100 kg/ha) for strong root development.`);
+    }
+
+    if (soil.potassium < 0.2) {
+      explanations.push(`Low potassium — apply muriate of potash (KCl) at 40-60 kg/ha, especially for root crops.`);
+    }
+
+    if (soil.organicCarbon < 10) {
+      explanations.push(`Low organic matter — incorporate compost or manure (5-10 t/ha) to improve soil structure and water retention.`);
+    }
+
+    if (soil.waterHoldingCapacity < 80) {
+      explanations.push(`Low water-holding capacity (${soil.waterHoldingCapacity} mm/m). Mulch heavily and plan for supplemental irrigation during dry spells.`);
+    }
+
+    if (soil.drainage.includes('Poorly')) {
+      explanations.push(`Soil is poorly drained — plant on ridges or raised beds to prevent waterlogging of ${crop.name}.`);
+    } else if (soil.drainage.includes('Excessively')) {
+      explanations.push(`Soil drains rapidly — add organic matter and mulch to retain moisture for ${crop.name}.`);
+    }
   }
 
   // Best window
