@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Sprout, Bell, ChevronRight, MapPin, TrendingUp, Clock, CloudSun, AlertTriangle } from 'lucide-react';
+import { Sprout, Bell, ChevronRight, MapPin, TrendingUp, Clock, CloudSun, AlertTriangle, CircleDot } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase, type Season } from '@/lib/supabase';
 import { COUNTIES, getCrop, type CropInfo } from '@/lib/data';
@@ -108,12 +108,12 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
         </button>
       </div>
 
-      {/* My Season card */}
+      {/* My Season — ongoing guidance */}
       <section className="px-5 mt-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-bold text-on-surface">My Season</h2>
           {activeSeason && (
-            <button onClick={() => onNavigate('advisor')} className="text-sm text-primary font-medium">View</button>
+            <button onClick={() => onNavigate('advisor')} className="text-sm text-primary font-medium">Guidance</button>
           )}
         </div>
         {activeSeason && growth ? (
@@ -137,10 +137,27 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
             <div className="h-2 bg-surface-container-high rounded-full overflow-hidden mb-2">
               <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${growth.progressPercent}%` }} />
             </div>
-            <div className="flex items-center justify-between text-xs text-on-surface-variant">
+            <div className="flex items-center justify-between text-xs text-on-surface-variant mb-3">
               <span className="flex items-center gap-1"><Clock size={12} /> {growth.remainingDays}d to harvest</span>
               <span>Harvest: {growth.harvestDate}</span>
             </div>
+            {/* This week's task preview */}
+            {(() => {
+              const currentWeek = Math.floor(growth.daysAfterPlanting / 7) + 1;
+              const cropData = getCrop(activeSeason.crop);
+              const weekAct = cropData?.weeklyActivities.find((a) => a.week === currentWeek);
+              if (!weekAct) return null;
+              return (
+                <div className="bg-primary-container/15 rounded-xl p-3 flex items-start gap-2.5">
+                  <CircleDot size={16} className="text-primary shrink-0 mt-0.5 animate-pulse" />
+                  <div>
+                    <p className="text-xs font-semibold text-primary">This Week · Week {currentWeek}</p>
+                    <p className="text-sm text-on-surface font-medium mt-0.5">{weekAct.title}</p>
+                    <p className="text-xs text-on-surface-variant mt-0.5">{weekAct.description}</p>
+                  </div>
+                </div>
+              );
+            })()}
           </button>
         ) : (
           <button
@@ -148,8 +165,8 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
             className="w-full bg-surface-container-lowest rounded-2xl p-5 border-2 border-dashed border-outline-variant text-center"
           >
             <Sprout size={28} className="mx-auto text-outline mb-2" />
-            <p className="text-sm font-medium text-on-surface">Start a new season</p>
-            <p className="text-xs text-outline mt-0.5">Track your crop from planting to harvest</p>
+            <p className="text-sm font-medium text-on-surface">Plan your first season</p>
+            <p className="text-xs text-outline mt-0.5">Get week-by-week guidance from planting to harvest</p>
           </button>
         )}
       </section>
