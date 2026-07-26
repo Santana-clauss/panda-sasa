@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Sprout, Bell, ChevronRight, MapPin, TrendingUp, Clock, CloudSun, AlertTriangle, CircleDot } from 'lucide-react';
+import { Sprout, Bell, ChevronRight, MapPin, TrendingUp, Clock, CloudSun, AlertTriangle, CircleDot, LocateFixed, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { supabase, type Season } from '@/lib/supabase';
+import { supabase, type Season, type Activity } from '@/lib/supabase';
 import { COUNTIES, getCrop, type CropInfo } from '@/lib/data';
 import { recommendCrops, calcGrowthStatus, generateNotifications, type CropRanking } from '@/lib/recommendations';
 import { fetchWeather, weatherToRecommendations } from '@/lib/weather';
+import { detectLocation } from '@/lib/location';
 import { WeatherIcon } from '@/components/ui';
 import type { TabKey } from '@/components/BottomNav';
 
@@ -16,16 +17,44 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
   const [weatherCode, setWeatherCode] = useState<number | null>(null);
   const [temp, setTemp] = useState<number | null>(null);
   const [notifs, setNotifs] = useState<{ id: string; title: string; body: string; priority: string; type: string }[]>([]);
+  const [currentActivity, setCurrentActivity] = useState<Activity | null>(null);
+  const [manualCoords, setManualCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [manualCounty, setManualCounty] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locMsg, setLocMsg] = useState<string | null>(null);
+  const [showCountyPicker, setShowCountyPicker] = useState(false);
 
-  const county = profile?.county ?? detectedCounty ?? 'Nakuru';
+  const county = manualCounty ?? profile?.county ?? detectedCounty ?? 'Nakuru';
   const countyInfo = useMemo(() => COUNTIES.find((c) => c.name === county), [county]);
 
   // Use the user's exact GPS coordinates for weather and soil lookups when
-  // available. Falls back to the county center only if GPS was denied.
+  // available. Manual override takes priority, then detected GPS, then county center.
   const lookupCoords = useMemo(
-    () => detectedCoords ?? (countyInfo ? { latitude: countyInfo.latitude, longitude: countyInfo.longitude } : null),
-    [detectedCoords, countyInfo],
+    () => manualCoords ?? detectedCoords ?? (countyInfo ? { latitude: countyInfo.latitude, longitude: countyInfo.longitude } : null),
+    [manualCoords, detectedCoords, countyInfo],
   );
+
+  async function useMyLocation() {
+    setLocating(true);
+    setLocMsg(null);
+    try {
+      const loc = await detectLocation();
+      setManualCoords({ latitude: loc.latitude, longitude: loc.longitude });
+      setManualCounty(loc.county.name);
+      setLocMsg(`Located: ${loc.county.name} (±${Math.round(loc.accuracyMeters ?? 0)}m)`);
+    } catch (e) {
+      setLocMsg(e instanceof Error ? e.message : 'Could not detect location.');
+    } finally {
+      setLocating(false);
+    }
+  }
+
+  function selectCounty(name: string) {
+    setManualCounty(name);
+    setManualCoords(null);
+    setShowCountyPicker(false);
+    setLocMsg(`Using ${name}`);
+  }
 
   useEffect(() => {
     setRankings(recommendCrops(county));
@@ -67,6 +96,22 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
   const activeSeason = seasons[0];
   const growth = activeSeason ? calcGrowthStatus(activeSeason.planting_date, activeSeason.crop, activeSeason.variety ?? undefined) : null;
 
+  // Fetch the current week's actual saved activity for the active season.
+  useEffect(() => {
+    if (!activeSeason || !growth) {
+      setCurrentActivity(null);
+      return;
+    }
+    const currentWeek = Math.floor(growth.daysAfterPlanting / 7) + 1;
+    supabase
+      .from('activities')
+      .select('*')
+      .eq('season_id', activeSeason.id)
+      .eq('week_number', currentWeek)
+      .maybeSingle()
+      .then(({ data }) => setCurrentActivity((data as Activity) ?? null));
+  }, [activeSeason, growth?.daysAfterPlanting]);
+
   const greetingName = profile?.name?.split(' ')[0] ?? (isGuest ? 'Guest' : 'Farmer');
 
   return (
@@ -91,6 +136,41 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
           <MapPin size={14} />
           <span>{county} · {countyInfo?.agroEcologicalZone ?? 'Kenya'}</span>
         </div>
+        {/* Location controls */}
+        <div className="flex items-center gap-2 mt-2">
+          <button
+            onClick={useMyLocation}
+            disabled={locating}
+            className="flex items-center gap-1.5 text-xs text-on-primary/90 bg-white/15 hover:bg-white/25 transition-colors px-3 py-1.5 rounded-full disabled:opacity-60"
+          >
+            {locating ? <Loader2 size={13} className="animate-spin" /> : <LocateFixed size={13} />}
+            {locating ? 'Detecting…' : 'Use my current location'}
+          </button>
+          <button
+            onClick={() => setShowCountyPicker(!showCountyPicker)}
+            className="flex items-center gap-1.5 text-xs text-on-primary/90 bg-white/15 hover:bg-white/25 transition-colors px-3 py-1.5 rounded-full"
+          >
+            <MapPin size={13} /> Change
+          </button>
+        </div>
+        {locMsg && <p className="text-[11px] text-on-primary/70 mt-1.5">{locMsg}</p>}
+        {showCountyPicker && (
+          <div className="mt-2 bg-white/15 rounded-xl p-2 max-h-40 overflow-y-auto">
+            <div className="grid grid-cols-2 gap-1">
+              {COUNTIES.map((c) => (
+                <button
+                  key={c.name}
+                  onClick={() => selectCounty(c.name)}
+                  className={`text-xs px-2.5 py-1.5 rounded-lg text-left transition-colors ${
+                    c.name === county ? 'bg-white/30 text-on-primary font-semibold' : 'text-on-primary/80 hover:bg-white/20'
+                  }`}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Weather card */}
@@ -148,19 +228,21 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
               <span className="flex items-center gap-1"><Clock size={12} /> {growth.remainingDays}d to harvest</span>
               <span>Harvest: {growth.harvestDate}</span>
             </div>
-            {/* This week's task preview */}
+            {/* This week's task preview — from actual saved activities */}
             {(() => {
               const currentWeek = Math.floor(growth.daysAfterPlanting / 7) + 1;
-              const cropData = getCrop(activeSeason.crop);
-              const weekAct = cropData?.weeklyActivities.find((a) => a.week === currentWeek);
-              if (!weekAct) return null;
+              const task = currentActivity;
+              if (!task) return null;
               return (
                 <div className="bg-primary-container/15 rounded-xl p-3 flex items-start gap-2.5">
                   <CircleDot size={16} className="text-primary shrink-0 mt-0.5 animate-pulse" />
-                  <div>
-                    <p className="text-xs font-semibold text-primary">This Week · Week {currentWeek}</p>
-                    <p className="text-sm text-on-surface font-medium mt-0.5">{weekAct.title}</p>
-                    <p className="text-xs text-on-surface-variant mt-0.5">{weekAct.description}</p>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-primary">This Week · Week {currentWeek}</p>
+                      {task.completed && <span className="text-[10px] text-primary font-medium">✓ Done</span>}
+                    </div>
+                    <p className="text-sm text-on-surface font-medium mt-0.5">{task.title}</p>
+                    <p className="text-xs text-on-surface-variant mt-0.5">{task.description}</p>
                   </div>
                 </div>
               );

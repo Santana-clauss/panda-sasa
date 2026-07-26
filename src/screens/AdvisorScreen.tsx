@@ -18,11 +18,15 @@ import { fetchSoilData, soilRecommendationsForCrop, type SoilData, type SoilReco
 type View = 'guidance' | 'plan' | 'crops' | 'seasons';
 
 export default function AdvisorScreen() {
-  const { profile, isGuest, detectedCounty } = useAuth();
+  const { profile, isGuest, detectedCounty, detectedCoords } = useAuth();
   const [view, setView] = useState<View>('guidance');
   const [seasons, setSeasons] = useState<Season[]>([]);
 
   const county = profile?.county ?? detectedCounty ?? 'Nakuru';
+  const lookupCoords = detectedCoords ?? (() => {
+    const ci = COUNTIES.find((c) => c.name === county);
+    return ci ? { latitude: ci.latitude, longitude: ci.longitude } : null;
+  })();
 
   async function loadSeasons() {
     if (isGuest) {
@@ -90,9 +94,9 @@ export default function AdvisorScreen() {
 
       <div className="px-5 mt-5">
         {view === 'guidance' && seasons.length > 0 && (
-          <GuidanceTimeline seasons={seasons} onUpdated={loadSeasons} />
+          <GuidanceTimeline seasons={seasons} onUpdated={loadSeasons} coords={lookupCoords} />
         )}
-        {view === 'plan' && <PlantingForm county={county} onSaved={loadSeasons} />}
+        {view === 'plan' && <PlantingForm county={county} coords={lookupCoords} onSaved={loadSeasons} />}
         {view === 'crops' && <CropPicks county={county} />}
         {view === 'seasons' && (
           <SeasonsList
@@ -119,7 +123,7 @@ const CATEGORY_META: Record<string, { icon: typeof Leaf; color: string; bg: stri
   harvest: { icon: Package, color: 'text-tertiary', bg: 'bg-tertiary-fixed/40' },
 };
 
-function GuidanceTimeline({ seasons, onUpdated }: { seasons: Season[]; onUpdated: () => void }) {
+function GuidanceTimeline({ seasons, onUpdated, coords }: { seasons: Season[]; onUpdated: () => void; coords: { latitude: number; longitude: number } | null }) {
   const [activeSeasonId, setActiveSeasonId] = useState(seasons[0]?.id ?? '');
   const [activities, setActivities] = useState<Activity[]>([]);
   const [soilData, setSoilData] = useState<SoilData | null>(null);
@@ -142,13 +146,11 @@ function GuidanceTimeline({ seasons, onUpdated }: { seasons: Season[]; onUpdated
     loadActivities();
   }, [season?.id]);
 
-  // Fetch soil data for the season's county
+  // Fetch soil data using exact GPS coordinates when available
   useEffect(() => {
-    if (!season) return;
-    const countyInfo = COUNTIES.find((c) => c.name === season.county);
-    if (!countyInfo) return;
-    fetchSoilData(countyInfo.latitude, countyInfo.longitude).then(setSoilData).catch(() => {});
-  }, [season?.id]);
+    if (!season || !coords) return;
+    fetchSoilData(coords.latitude, coords.longitude).then(setSoilData).catch(() => {});
+  }, [season?.id, coords]);
 
   async function toggleActivity(act: Activity) {
     const completed = !act.completed;
@@ -385,7 +387,7 @@ function stageGuidance(crop: CropInfo, stageName: string): string {
 
 /* ---------- Planting Form + Result ---------- */
 
-function PlantingForm({ county, onSaved }: { county: string; onSaved: () => void }) {
+function PlantingForm({ county, coords, onSaved }: { county: string; coords: { latitude: number; longitude: number } | null; onSaved: () => void }) {
   const [selectedCounty, setSelectedCounty] = useState(county);
   const [subCounty, setSubCounty] = useState('');
   const [crop, setCrop] = useState('Maize');
@@ -422,11 +424,11 @@ function PlantingForm({ county, onSaved }: { county: string; onSaved: () => void
     setSaveMsg(null);
     let rainfallForecast: number | undefined;
     let soil: SoilData | undefined;
-    if (countyInfo) {
+    if (coords) {
       try {
         const [w, s] = await Promise.all([
-          fetchWeather(countyInfo.latitude, countyInfo.longitude),
-          fetchSoilData(countyInfo.latitude, countyInfo.longitude),
+          fetchWeather(coords.latitude, coords.longitude),
+          fetchSoilData(coords.latitude, coords.longitude),
         ]);
         rainfallForecast = w.daily.slice(0, 14).reduce((sum, d) => sum + d.precipitation, 0);
         soil = s;
