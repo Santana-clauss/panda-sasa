@@ -171,7 +171,7 @@ function GuidanceTimeline({ seasons, onUpdated, coords }: { seasons: Season[]; o
 
   // Determine current week number
   const currentWeek = Math.floor(growth.daysAfterPlanting / 7) + 1;
-  const totalWeeks = Math.ceil((cropInfo.maturityDays) / 7);
+  const totalWeeks = Math.ceil((season.maturity_days ?? cropInfo.maturityDays) / 7);
 
   // Find current and next activities
   const currentActivity = activities.find((a) => a.week_number === currentWeek);

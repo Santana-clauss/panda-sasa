@@ -267,29 +267,38 @@ export function analyzePlanting(input: {
 
   // Timing fit: how well does the planting date match the crop calendar window?
   let timingFit = 70;
-  if (inWindow) timingFit = 95;
-  else if (isLate) timingFit = 60;
-  else if (month < startMonth) timingFit = 40;
-  else timingFit = 30;
+  if (inWindow) {
+    timingFit = 95;
+  } else if (isLate) {
+    timingFit = 60;
+  } else if (month < startMonth) {
+    // Before the window: score based on how many months early
+    const monthsEarly = startMonth - month;
+    timingFit = Math.max(20, 55 - monthsEarly * 8);
+  } else {
+    // After the window
+    const monthsLate = month - endMonth;
+    timingFit = Math.max(15, 45 - monthsLate * 10);
+  }
 
   // Zone fit: does the county's agro-ecological zone match the crop?
   const zoneFit = zoneMatch ? 95 : 50;
 
-  // Overall: weighted average
-  const overall = Math.round(
-    rainfallFit * 0.35 + soilFit * 0.25 + timingFit * 0.25 + zoneFit * 0.15,
-  );
+  // Overall: blend of weighted average and harmonic mean.
+  // The harmonic mean penalizes any single weak sub-factor more heavily than a
+  // weighted average, so genuinely different input combinations produce
+  // different overall scores instead of rounding to the same number.
+  const weightedSum = rainfallFit * 0.35 + soilFit * 0.25 + timingFit * 0.25 + zoneFit * 0.15;
+  const harmonicMean = 4 / (1 / rainfallFit + 1 / soilFit + 1 / timingFit + 1 / zoneFit);
+  const overall = Math.max(5, Math.round(0.5 * weightedSum + 0.5 * harmonicMean));
   let confidence = overall;
 
   if (!zoneMatch && seasonRainfall < cropMinRain) {
     verdict = 'Not Recommended';
-    confidence = Math.min(confidence, 30);
   } else if (!inWindow && (month < startMonth || daysIntoSeason >= 60)) {
     verdict = 'Wait';
-    confidence = Math.min(confidence, 50);
   } else if (isLate) {
     verdict = 'Plant Now';
-    confidence = Math.min(confidence, 70);
     explanations.push('Despite late planting, short-maturity varieties can still produce a viable crop.');
   } else if (inWindow && zoneMatch) {
     confidence = Math.max(confidence, 92);
@@ -299,7 +308,6 @@ export function analyzePlanting(input: {
 
   if (input.rainfallForecast != null && input.rainfallForecast < 10 && verdict === 'Plant Now') {
     verdict = 'Wait';
-    confidence = Math.min(confidence, 55);
     explanations.push('With dry conditions forecast, waiting 3-5 days for rainfall will improve germination.');
   }
 

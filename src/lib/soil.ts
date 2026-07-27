@@ -227,7 +227,7 @@ const COUNTY_SOIL: Record<string, CountySoilProfile> = {
 };
 
 // Generic regional fallback (broad zone) used when no county-specific profile exists.
-function fallbackSoil(lat: number, lon: number, county?: string): SoilData {
+export function fallbackSoil(lat: number, lon: number, county?: string): SoilData {
   // Try county-specific profile first
   if (county && COUNTY_SOIL[county]) {
     return { ...COUNTY_SOIL[county] };
