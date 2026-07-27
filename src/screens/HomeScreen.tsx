@@ -98,7 +98,7 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
 
   // Fetch the current week's actual saved activity for the active season.
   useEffect(() => {
-    if (!activeSeason || !growth) {
+    if (!activeSeason || !growth || growth.isBeforePlanting) {
       setCurrentActivity(null);
       return;
     }
@@ -110,7 +110,7 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
       .eq('week_number', currentWeek)
       .maybeSingle()
       .then(({ data }) => setCurrentActivity((data as Activity) ?? null));
-  }, [activeSeason, growth?.daysAfterPlanting]);
+  }, [activeSeason?.id, growth?.daysAfterPlanting, growth?.isBeforePlanting]);
 
   const greetingName = profile?.name?.split(' ')[0] ?? (isGuest ? 'Guest' : 'Farmer');
 
@@ -217,8 +217,17 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-xs text-outline">Day {growth.daysAfterPlanting}</p>
-                <p className="text-sm font-medium text-primary">{growth.currentStage}</p>
+                {growth.isBeforePlanting ? (
+                  <>
+                    <p className="text-xs text-outline">Opens in</p>
+                    <p className="text-sm font-medium text-primary">{growth.remainingDays}d</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-outline">Day {growth.daysAfterPlanting}</p>
+                    <p className="text-sm font-medium text-primary">{growth.currentStage}</p>
+                  </>
+                )}
               </div>
             </div>
             <div className="h-2 bg-surface-container-high rounded-full overflow-hidden mb-2">
@@ -230,6 +239,18 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
             </div>
             {/* This week's task preview — from actual saved activities */}
             {(() => {
+              if (growth.isBeforePlanting) {
+                return (
+                  <div className="bg-primary-container/15 rounded-xl p-3 flex items-start gap-2.5">
+                    <CircleDot size={16} className="text-primary shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold text-primary">Not yet planted</p>
+                      <p className="text-sm text-on-surface font-medium mt-0.5">Planting window opens in {growth.remainingDays}d</p>
+                      <p className="text-xs text-on-surface-variant mt-0.5">Prepare your field and source certified seed.</p>
+                    </div>
+                  </div>
+                );
+              }
               const currentWeek = Math.floor(growth.daysAfterPlanting / 7) + 1;
               const task = currentActivity;
               if (!task) return null;

@@ -2,6 +2,7 @@
 import { COUNTIES, CROPS, MONTH_TO_NUM, getCounty, getCrop, type County, type CropInfo } from './data';
 import type { DailyForecast } from './weather';
 import type { SoilData } from './soil';
+import { getCurrentStage, getGrowthProfile, type CurrentStageResult } from './growthProfiles';
 
 export type PlantingDecision = {
   verdict: 'Plant Now' | 'Wait' | 'Not Recommended';
@@ -10,8 +11,17 @@ export type PlantingDecision = {
   recommendedVariety: string;
   estimatedHarvestDate: string;
   daysToHarvest: number;
-  explanation: string[];
+  maturityDays: number;
+  growthProfileId: string;
   confidence: number;
+  confidenceBreakdown: {
+    rainfallFit: number;
+    soilFit: number;
+    timingFit: number;
+    zoneFit: number;
+    overall: number;
+  };
+  explanation: string[];
 };
 
 function addDays(date: Date, days: number): Date {
@@ -125,8 +135,11 @@ export function analyzePlanting(input: {
       recommendedVariety: input.variety ?? '',
       estimatedHarvestDate: '',
       daysToHarvest: 0,
-      explanation: ['County or crop not found in our dataset.'],
+      maturityDays: 0,
+      growthProfileId: '',
       confidence: 0,
+      confidenceBreakdown: { rainfallFit: 0, soilFit: 0, timingFit: 0, zoneFit: 0, overall: 0 },
+      explanation: ['County or crop not found in our dataset.'],
     };
   }
 
@@ -231,24 +244,57 @@ export function analyzePlanting(input: {
   const harvestDate = addDays(planting, maturityDays);
   const daysToHarvest = Math.ceil((harvestDate.getTime() - Date.now()) / 86400000);
 
-  // 7. Verdict
+  // 7. Verdict and confidence breakdown (computed from sub-scores)
   let verdict: PlantingDecision['verdict'] = 'Plant Now';
-  let confidence = 80;
+
+  // --- Confidence sub-scores (0-100 each) ---
+  // Rainfall fit: how well does the seasonal rainfall match the crop's needs?
+  let rainfallFit = 70;
+  if (seasonRainfall >= cropMinRain && seasonRainfall <= cropMaxRain) rainfallFit = 95;
+  else if (seasonRainfall >= cropMinRain * 0.8) rainfallFit = 75;
+  else if (seasonRainfall < cropMinRain) rainfallFit = 35;
+
+  // Soil fit: based on pH and nutrient levels (if soil data available)
+  let soilFit = 70;
+  if (input.soil) {
+    soilFit = 80;
+    if (input.soil.ph < 5.5 || input.soil.ph > 7.5) soilFit -= 20;
+    if (input.soil.nitrogen < 8) soilFit -= 10;
+    if (input.soil.phosphorus < 5) soilFit -= 10;
+    if (input.soil.organicCarbon < 10) soilFit -= 10;
+    soilFit = Math.max(20, soilFit);
+  }
+
+  // Timing fit: how well does the planting date match the crop calendar window?
+  let timingFit = 70;
+  if (inWindow) timingFit = 95;
+  else if (isLate) timingFit = 60;
+  else if (month < startMonth) timingFit = 40;
+  else timingFit = 30;
+
+  // Zone fit: does the county's agro-ecological zone match the crop?
+  const zoneFit = zoneMatch ? 95 : 50;
+
+  // Overall: weighted average
+  const overall = Math.round(
+    rainfallFit * 0.35 + soilFit * 0.25 + timingFit * 0.25 + zoneFit * 0.15,
+  );
+  let confidence = overall;
 
   if (!zoneMatch && seasonRainfall < cropMinRain) {
     verdict = 'Not Recommended';
-    confidence = 30;
+    confidence = Math.min(confidence, 30);
   } else if (!inWindow && (month < startMonth || daysIntoSeason >= 60)) {
     verdict = 'Wait';
-    confidence = 50;
+    confidence = Math.min(confidence, 50);
   } else if (isLate) {
     verdict = 'Plant Now';
-    confidence = 70;
+    confidence = Math.min(confidence, 70);
     explanations.push('Despite late planting, short-maturity varieties can still produce a viable crop.');
   } else if (inWindow && zoneMatch) {
-    confidence = 92;
+    confidence = Math.max(confidence, 92);
   } else if (inWindow) {
-    confidence = 78;
+    confidence = Math.max(confidence, 78);
   }
 
   if (input.rainfallForecast != null && input.rainfallForecast < 10 && verdict === 'Plant Now') {
@@ -256,6 +302,12 @@ export function analyzePlanting(input: {
     confidence = Math.min(confidence, 55);
     explanations.push('With dry conditions forecast, waiting 3-5 days for rainfall will improve germination.');
   }
+
+  const confidenceBreakdown = { rainfallFit, soilFit, timingFit, zoneFit, overall: confidence };
+
+  // Growth profile id for this crop/variety
+  const growthProfile = getGrowthProfile(input.crop, recommendedVariety || undefined);
+  const growthProfileId = growthProfile ? `${growthProfile.crop}${growthProfile.variety ? ':' + growthProfile.variety : ''}` : input.crop;
 
   // Soil-based recommendations (from ISRIC SoilGrids)
   if (input.soil) {
@@ -321,8 +373,11 @@ export function analyzePlanting(input: {
     recommendedVariety,
     estimatedHarvestDate: fmt(harvestDate),
     daysToHarvest,
-    explanation: explanations,
+    maturityDays,
+    growthProfileId,
     confidence,
+    confidenceBreakdown,
+    explanation: explanations,
   };
 }
 
@@ -418,49 +473,37 @@ export function recommendVariety(cropName: string, isLate: boolean): {
   };
 }
 
-// Growth stage calculation
+// Growth stage calculation — delegates to the single source of truth in growthProfiles.ts
 export type GrowthStatus = {
   daysAfterPlanting: number;
-  currentStage: string;
-  stageDescription: string;
+  currentStage: string | null;
+  stageDescription: string | null;
+  stageIndex: number;
   remainingDays: number;
   progressPercent: number;
   harvestDate: string;
   isMature: boolean;
+  isBeforePlanting: boolean;
+  isPastHarvest: boolean;
+  maturityDays: number;
 };
 
 export function calcGrowthStatus(plantingDate: string, cropName: string, varietyName?: string): GrowthStatus | null {
-  const crop = getCrop(cropName);
-  if (!crop) return null;
-
-  const planting = new Date(plantingDate);
-  const now = new Date();
-  const dap = Math.floor((now.getTime() - planting.getTime()) / 86400000);
-
-  const variety = varietyName ? crop.varieties.find((v) => v.name.toLowerCase() === varietyName.toLowerCase()) : null;
-  const totalDays = variety?.maturityDays ?? crop.maturityDays;
-  const harvestDate = addDays(planting, totalDays);
-  const remaining = totalDays - dap;
-  const progress = Math.max(0, Math.min(100, (dap / totalDays) * 100));
-
-  let stage = crop.stages[crop.stages.length - 1];
-  let stageDescription = stage.description;
-  for (const s of crop.stages) {
-    if (dap >= s.startDay && dap <= s.endDay) {
-      stage = s;
-      stageDescription = s.description;
-      break;
-    }
-  }
+  const result = getCurrentStage(plantingDate, cropName, varietyName, new Date());
+  if (!result) return null;
 
   return {
-    daysAfterPlanting: Math.max(0, dap),
-    currentStage: stage.name,
-    stageDescription,
-    remainingDays: Math.max(0, remaining),
-    progressPercent: progress,
-    harvestDate: fmt(harvestDate),
-    isMature: dap >= totalDays,
+    daysAfterPlanting: result.dayInSeason,
+    currentStage: result.stageName,
+    stageDescription: result.stageDescription,
+    stageIndex: result.stageIndex,
+    remainingDays: Math.max(0, result.maturityDays - result.dayInSeason),
+    progressPercent: result.progressPercent,
+    harvestDate: result.harvestDate,
+    isMature: result.isPastHarvest,
+    isBeforePlanting: result.isBeforePlanting,
+    isPastHarvest: result.isPastHarvest,
+    maturityDays: result.maturityDays,
   };
 }
 

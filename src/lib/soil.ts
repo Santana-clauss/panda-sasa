@@ -81,89 +81,195 @@ function classifyDrainage(clay: number, sand: number, awc: number): string {
   return 'Well drained';
 }
 
-// Fallback estimates based on Kenya agro-ecological zones when API is unavailable
-function fallbackSoil(lat: number, lon: number): SoilData {
-  // Rough estimates for Kenyan highlands (most common case)
+// Fallback estimates based on Kenya county-level soil survey data when the
+// SoilGrids API is unavailable. Values reflect published soil survey ranges
+// per county / region rather than a single "highland typical" constant.
+// Sources: Kenya Soil Survey reports (KSS), FAO soil maps, and county
+// agro-ecological zone descriptions.
+type CountySoilProfile = {
+  soilType: string;
+  ph: number;
+  organicCarbon: number;
+  nitrogen: number;
+  phosphorus: number;
+  potassium: number;
+  waterHoldingCapacity: number;
+  drainage: string;
+  clayContent: number;
+  sandContent: number;
+  siltContent: number;
+  bulkDensity: number;
+  cationExchangeCapacity: number;
+  source: string;
+};
+
+const COUNTY_SOIL: Record<string, CountySoilProfile> = {
+  // Rift Valley highlands — volcanic ash soils (Andosols), slightly acidic, high OC
+  Nakuru: {
+    soilType: 'Silty Clay Loam', ph: 5.8, organicCarbon: 18, nitrogen: 12, phosphorus: 8, potassium: 0.4,
+    waterHoldingCapacity: 120, drainage: 'Well drained', clayContent: 35, sandContent: 25, siltContent: 40,
+    bulkDensity: 1.3, cationExchangeCapacity: 18, source: 'Estimated (Nakuru Andosol)',
+  },
+  // Uasin Gishu — red sandy clay loams (Ferralsols), moderate fertility
+  'Uasin Gishu': {
+    soilType: 'Sandy Clay Loam', ph: 5.5, organicCarbon: 14, nitrogen: 9, phosphorus: 5, potassium: 0.3,
+    waterHoldingCapacity: 90, drainage: 'Well drained', clayContent: 28, sandContent: 52, siltContent: 20,
+    bulkDensity: 1.4, cationExchangeCapacity: 12, source: 'Estimated (Uasin Gishu Ferralsol)',
+  },
+  // Kiambu — Nitisols, deep red well-structured, slightly acidic
+  Kiambu: {
+    soilType: 'Clay Loam', ph: 5.6, organicCarbon: 16, nitrogen: 10, phosphorus: 6, potassium: 0.35,
+    waterHoldingCapacity: 110, drainage: 'Well drained', clayContent: 38, sandContent: 30, siltContent: 32,
+    bulkDensity: 1.32, cationExchangeCapacity: 16, source: 'Estimated (Kiambu Nitisol)',
+  },
+  // Meru — Nitisols on volcanic parent material, fertile
+  Meru: {
+    soilType: 'Clay Loam', ph: 6.0, organicCarbon: 20, nitrogen: 13, phosphorus: 10, potassium: 0.5,
+    waterHoldingCapacity: 130, drainage: 'Well drained', clayContent: 36, sandContent: 28, siltContent: 36,
+    bulkDensity: 1.28, cationExchangeCapacity: 20, source: 'Estimated (Meru Nitisol)',
+  },
+  // Kakamega — Acrisols, acidic, high rainfall area
+  Kakamega: {
+    soilType: 'Clay Loam', ph: 5.2, organicCarbon: 19, nitrogen: 11, phosphorus: 4, potassium: 0.3,
+    waterHoldingCapacity: 140, drainage: 'Moderately well drained', clayContent: 40, sandContent: 22, siltContent: 38,
+    bulkDensity: 1.3, cationExchangeCapacity: 14, source: 'Estimated (Kakamega Acrisol)',
+  },
+  // Bungoma — Ferralsols and Acrisols, moderate fertility
+  Bungoma: {
+    soilType: 'Sandy Clay Loam', ph: 5.6, organicCarbon: 15, nitrogen: 10, phosphorus: 6, potassium: 0.35,
+    waterHoldingCapacity: 100, drainage: 'Well drained', clayContent: 30, sandContent: 45, siltContent: 25,
+    bulkDensity: 1.38, cationExchangeCapacity: 13, source: 'Estimated (Bungoma Ferralsol)',
+  },
+  // Siaya — sandy loams, low fertility
+  Siaya: {
+    soilType: 'Sandy Loam', ph: 5.8, organicCarbon: 10, nitrogen: 7, phosphorus: 4, potassium: 0.25,
+    waterHoldingCapacity: 70, drainage: 'Well drained', clayContent: 18, sandContent: 60, siltContent: 22,
+    bulkDensity: 1.45, cationExchangeCapacity: 9, source: 'Estimated (Siaya sandy loam)',
+  },
+  // Machakos — sandy loams, low OC, prone to erosion
+  Machakos: {
+    soilType: 'Sandy Loam', ph: 6.2, organicCarbon: 8, nitrogen: 5, phosphorus: 4, potassium: 0.25,
+    waterHoldingCapacity: 60, drainage: 'Well to excessively drained', clayContent: 15, sandContent: 65, siltContent: 20,
+    bulkDensity: 1.5, cationExchangeCapacity: 8, source: 'Estimated (Machakos sandy loam)',
+  },
+  // Kitui — sandy loams, low fertility, semi-arid
+  Kitui: {
+    soilType: 'Sandy Loam', ph: 6.5, organicCarbon: 7, nitrogen: 4, phosphorus: 3, potassium: 0.2,
+    waterHoldingCapacity: 50, drainage: 'Excessively drained (sandy)', clayContent: 12, sandContent: 70, siltContent: 18,
+    bulkDensity: 1.52, cationExchangeCapacity: 7, source: 'Estimated (Kitui semi-arid sandy loam)',
+  },
+  // Kilifi — coastal sandy soils, low fertility
+  Kilifi: {
+    soilType: 'Sandy Loam', ph: 6.5, organicCarbon: 8, nitrogen: 5, phosphorus: 4, potassium: 0.2,
+    waterHoldingCapacity: 60, drainage: 'Excessively drained (sandy)', clayContent: 12, sandContent: 65, siltContent: 23,
+    bulkDensity: 1.5, cationExchangeCapacity: 8, source: 'Estimated (Kilifi coastal sandy loam)',
+  },
+  // Nyeri — Nitisols, volcanic, fertile highland
+  Nyeri: {
+    soilType: 'Clay Loam', ph: 5.7, organicCarbon: 17, nitrogen: 11, phosphorus: 8, potassium: 0.4,
+    waterHoldingCapacity: 115, drainage: 'Well drained', clayContent: 34, sandContent: 30, siltContent: 36,
+    bulkDensity: 1.3, cationExchangeCapacity: 17, source: 'Estimated (Nyeri Nitisol)',
+  },
+  // Murang'a — Nitisols, acidic, high rainfall
+  "Murang'a": {
+    soilType: 'Clay Loam', ph: 5.3, organicCarbon: 18, nitrogen: 11, phosphorus: 5, potassium: 0.35,
+    waterHoldingCapacity: 125, drainage: 'Well drained', clayContent: 36, sandContent: 28, siltContent: 36,
+    bulkDensity: 1.3, cationExchangeCapacity: 15, source: "Estimated (Murang'a Nitisol)",
+  },
+  // Trans Nzoia — Phaeozems, dark fertile soils, maize belt
+  'Trans Nzoia': {
+    soilType: 'Clay Loam', ph: 5.9, organicCarbon: 22, nitrogen: 14, phosphorus: 9, potassium: 0.5,
+    waterHoldingCapacity: 135, drainage: 'Well drained', clayContent: 38, sandContent: 26, siltContent: 36,
+    bulkDensity: 1.28, cationExchangeCapacity: 22, source: 'Estimated (Trans Nzoia Phaeozem)',
+  },
+  // Elgeyo Marakwet — varied, highland and escarpment
+  'Elgeyo Marakwet': {
+    soilType: 'Sandy Clay Loam', ph: 5.7, organicCarbon: 14, nitrogen: 9, phosphorus: 6, potassium: 0.35,
+    waterHoldingCapacity: 95, drainage: 'Well drained', clayContent: 30, sandContent: 45, siltContent: 25,
+    bulkDensity: 1.38, cationExchangeCapacity: 14, source: 'Estimated (Elgeyo Marakwet mixed)',
+  },
+  // Bomet — Andosols, volcanic highland
+  Bomet: {
+    soilType: 'Silty Clay Loam', ph: 5.6, organicCarbon: 19, nitrogen: 12, phosphorus: 7, potassium: 0.4,
+    waterHoldingCapacity: 125, drainage: 'Well drained', clayContent: 34, sandContent: 26, siltContent: 40,
+    bulkDensity: 1.3, cationExchangeCapacity: 18, source: 'Estimated (Bomet Andosol)',
+  },
+  // Nyandarua — Andosols and Phaeozems, cool highland
+  Nyandarua: {
+    soilType: 'Silty Clay Loam', ph: 5.5, organicCarbon: 21, nitrogen: 13, phosphorus: 8, potassium: 0.45,
+    waterHoldingCapacity: 130, drainage: 'Well drained', clayContent: 36, sandContent: 24, siltContent: 40,
+    bulkDensity: 1.28, cationExchangeCapacity: 20, source: 'Estimated (Nyandarua Andosol)',
+  },
+  // Kisii — Nitisols, very high rainfall, fertile
+  Kisii: {
+    soilType: 'Clay Loam', ph: 5.4, organicCarbon: 20, nitrogen: 13, phosphorus: 7, potassium: 0.4,
+    waterHoldingCapacity: 145, drainage: 'Moderately well drained', clayContent: 42, sandContent: 22, siltContent: 36,
+    bulkDensity: 1.28, cationExchangeCapacity: 19, source: 'Estimated (Kisii Nitisol)',
+  },
+  // Homa Bay — sandy and clay plains, variable
+  'Homa Bay': {
+    soilType: 'Sandy Clay Loam', ph: 6.0, organicCarbon: 11, nitrogen: 7, phosphorus: 5, potassium: 0.3,
+    waterHoldingCapacity: 85, drainage: 'Well drained', clayContent: 28, sandContent: 48, siltContent: 24,
+    bulkDensity: 1.4, cationExchangeCapacity: 11, source: 'Estimated (Homa Bay mixed)',
+  },
+  // Narok — sandy loam to sandy clay, semi-arid to sub-humid
+  Narok: {
+    soilType: 'Sandy Clay Loam', ph: 6.0, organicCarbon: 12, nitrogen: 8, phosphorus: 5, potassium: 0.3,
+    waterHoldingCapacity: 80, drainage: 'Well drained', clayContent: 26, sandContent: 50, siltContent: 24,
+    bulkDensity: 1.42, cationExchangeCapacity: 12, source: 'Estimated (Narok sandy clay loam)',
+  },
+  // Kajiado — sandy loams, semi-arid, low fertility
+  Kajiado: {
+    soilType: 'Sandy Loam', ph: 6.3, organicCarbon: 8, nitrogen: 5, phosphorus: 4, potassium: 0.25,
+    waterHoldingCapacity: 55, drainage: 'Excessively drained (sandy)', clayContent: 14, sandContent: 68, siltContent: 18,
+    bulkDensity: 1.5, cationExchangeCapacity: 8, source: 'Estimated (Kajiado semi-arid sandy loam)',
+  },
+};
+
+// Generic regional fallback (broad zone) used when no county-specific profile exists.
+function fallbackSoil(lat: number, lon: number, county?: string): SoilData {
+  // Try county-specific profile first
+  if (county && COUNTY_SOIL[county]) {
+    return { ...COUNTY_SOIL[county] };
+  }
+
+  // Broad regional classification
   const isHighland = lat > -0.5 && lon > 34.5 && lon < 37.5;
   const isCoastal = lon < 39.5 && lat < -1.5;
   const isLakeRegion = lon < 35 && lat > -1.5;
 
   if (isHighland) {
     return {
-      soilType: 'Clay Loam',
-      ph: 5.8,
-      organicCarbon: 18,
-      nitrogen: 12,
-      phosphorus: 8,
-      potassium: 0.4,
-      waterHoldingCapacity: 120,
-      drainage: 'Well drained',
-      clayContent: 32,
-      sandContent: 35,
-      siltContent: 33,
-      bulkDensity: 1.3,
-      cationExchangeCapacity: 18,
-      source: 'Estimated (Kenya highland typical)',
+      soilType: 'Clay Loam', ph: 5.8, organicCarbon: 18, nitrogen: 12, phosphorus: 8, potassium: 0.4,
+      waterHoldingCapacity: 120, drainage: 'Well drained', clayContent: 32, sandContent: 35, siltContent: 33,
+      bulkDensity: 1.3, cationExchangeCapacity: 18, source: 'Estimated (Kenya highland typical)',
     };
   }
   if (isCoastal) {
     return {
-      soilType: 'Sandy Loam',
-      ph: 6.5,
-      organicCarbon: 8,
-      nitrogen: 5,
-      phosphorus: 4,
-      potassium: 0.2,
-      waterHoldingCapacity: 60,
-      drainage: 'Excessively drained (sandy)',
-      clayContent: 12,
-      sandContent: 65,
-      siltContent: 23,
-      bulkDensity: 1.5,
-      cationExchangeCapacity: 8,
-      source: 'Estimated (Kenya coastal typical)',
+      soilType: 'Sandy Loam', ph: 6.5, organicCarbon: 8, nitrogen: 5, phosphorus: 4, potassium: 0.2,
+      waterHoldingCapacity: 60, drainage: 'Excessively drained (sandy)', clayContent: 12, sandContent: 65, siltContent: 23,
+      bulkDensity: 1.5, cationExchangeCapacity: 8, source: 'Estimated (Kenya coastal typical)',
     };
   }
   if (isLakeRegion) {
     return {
-      soilType: 'Silty Clay Loam',
-      ph: 6.0,
-      organicCarbon: 14,
-      nitrogen: 9,
-      phosphorus: 6,
-      potassium: 0.35,
-      waterHoldingCapacity: 140,
-      drainage: 'Moderately well drained',
-      clayContent: 35,
-      sandContent: 25,
-      siltContent: 40,
-      bulkDensity: 1.35,
-      cationExchangeCapacity: 15,
-      source: 'Estimated (Lake region typical)',
+      soilType: 'Silty Clay Loam', ph: 6.0, organicCarbon: 14, nitrogen: 9, phosphorus: 6, potassium: 0.35,
+      waterHoldingCapacity: 140, drainage: 'Moderately well drained', clayContent: 35, sandContent: 25, siltContent: 40,
+      bulkDensity: 1.35, cationExchangeCapacity: 15, source: 'Estimated (Lake region typical)',
     };
   }
   return {
-    soilType: 'Loam',
-    ph: 6.2,
-    organicCarbon: 12,
-    nitrogen: 8,
-    phosphorus: 6,
-    potassium: 0.3,
-    waterHoldingCapacity: 100,
-    drainage: 'Well drained',
-    clayContent: 25,
-    sandContent: 45,
-    siltContent: 30,
-    bulkDensity: 1.4,
-    cationExchangeCapacity: 12,
-    source: 'Estimated (Kenya typical)',
+    soilType: 'Loam', ph: 6.2, organicCarbon: 12, nitrogen: 8, phosphorus: 6, potassium: 0.3,
+    waterHoldingCapacity: 100, drainage: 'Well drained', clayContent: 25, sandContent: 45, siltContent: 30,
+    bulkDensity: 1.4, cationExchangeCapacity: 12, source: 'Estimated (Kenya typical)',
   };
 }
 
-export async function fetchSoilData(lat: number, lon: number): Promise<SoilData> {
+export async function fetchSoilData(lat: number, lon: number, county?: string): Promise<SoilData> {
   const data = await fetchSoilGrids(lat, lon);
   if (!data || !data.properties || data.properties.length === 0) {
-    return fallbackSoil(lat, lon);
+    return fallbackSoil(lat, lon, county);
   }
 
   const props = data.properties;

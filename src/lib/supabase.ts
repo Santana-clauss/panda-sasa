@@ -30,6 +30,39 @@ export type Season = {
   notes: string | null;
   status: string;
   created_at: string;
+  // Snapshot fields (populated at save time)
+  maturity_days: number | null;
+  growth_profile_id: string | null;
+  planting_window_start: string | null;
+  planting_window_end: string | null;
+  soil_data: SoilDataSnapshot | null;
+  confidence_score: number | null;
+  confidence_breakdown: ConfidenceBreakdown | null;
+};
+
+export type SoilDataSnapshot = {
+  soilType: string;
+  ph: number;
+  organicCarbon: number;
+  nitrogen: number;
+  phosphorus: number;
+  potassium: number;
+  waterHoldingCapacity: number;
+  drainage: string;
+  clayContent: number;
+  sandContent: number;
+  siltContent: number;
+  bulkDensity: number;
+  cationExchangeCapacity: number;
+  source: string;
+};
+
+export type ConfidenceBreakdown = {
+  rainfallFit: number;
+  soilFit: number;
+  timingFit: number;
+  zoneFit: number;
+  overall: number;
 };
 
 export type Activity = {

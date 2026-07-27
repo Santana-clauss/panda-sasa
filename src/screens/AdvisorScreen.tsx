@@ -15,6 +15,12 @@ import { fetchWeather } from '@/lib/weather';
 import { detectLocation } from '@/lib/location';
 import { fetchSoilData, soilRecommendationsForCrop, type SoilData, type SoilRecommendation } from '@/lib/soil';
 
+function fmtDate(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
 type View = 'guidance' | 'plan' | 'crops' | 'seasons';
 
 export default function AdvisorScreen() {
@@ -149,7 +155,7 @@ function GuidanceTimeline({ seasons, onUpdated, coords }: { seasons: Season[]; o
   // Fetch soil data using exact GPS coordinates when available
   useEffect(() => {
     if (!season || !coords) return;
-    fetchSoilData(coords.latitude, coords.longitude).then(setSoilData).catch(() => {});
+    fetchSoilData(coords.latitude, coords.longitude, season.county).then(setSoilData).catch(() => {});
   }, [season?.id, coords]);
 
   async function toggleActivity(act: Activity) {
@@ -207,16 +213,41 @@ function GuidanceTimeline({ seasons, onUpdated, coords }: { seasons: Season[]; o
             </div>
           </div>
           <div className="text-right">
-            <p className="text-3xl font-bold">{growth.daysAfterPlanting}</p>
-            <p className="text-xs text-on-primary/70">days planted</p>
+            {growth.isBeforePlanting ? (
+              <>
+                <p className="text-2xl font-bold">{growth.remainingDays > 0 ? Math.ceil(growth.remainingDays / 7) : 0}</p>
+                <p className="text-xs text-on-primary/70">weeks to planting</p>
+              </>
+            ) : (
+              <>
+                <p className="text-3xl font-bold">{growth.daysAfterPlanting}</p>
+                <p className="text-xs text-on-primary/70">days planted</p>
+              </>
+            )}
           </div>
         </div>
         <div className="bg-white/15 rounded-xl px-3 py-2.5">
-          <p className="text-sm font-semibold">Current Stage: {growth.currentStage}</p>
-          <p className="text-xs text-on-primary/80 mt-0.5">{growth.stageDescription}</p>
+          {growth.isBeforePlanting ? (
+            <>
+              <p className="text-sm font-semibold">Not yet planted</p>
+              <p className="text-xs text-on-primary/80 mt-0.5">
+                Planting window: {fmtDate(season.planting_window_start ?? season.planting_date)} – {fmtDate(season.planting_window_end ?? season.planting_date)}.
+                {growth.remainingDays > 0 ? ` Opens in ${growth.remainingDays}d.` : ' Ready to plant.'}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-semibold">Current Stage: {growth.currentStage ?? '—'}</p>
+              <p className="text-xs text-on-primary/80 mt-0.5">{growth.stageDescription}</p>
+            </>
+          )}
         </div>
         <div className="flex items-center justify-between mt-3 text-xs">
-          <span>Week {currentWeek} of {totalWeeks}</span>
+          {growth.isBeforePlanting ? (
+            <span>Awaiting planting</span>
+          ) : (
+            <span>Week {currentWeek} of {totalWeeks}</span>
+          )}
           <span className="flex items-center gap-1"><Clock size={12} /> {growth.remainingDays}d to harvest</span>
         </div>
         <div className="h-2 bg-white/20 rounded-full overflow-hidden mt-1.5">
@@ -269,9 +300,11 @@ function GuidanceTimeline({ seasons, onUpdated, coords }: { seasons: Season[]; o
           <Info size={14} className="text-primary" /> Stage Guidance
         </h3>
         <p className="text-xs text-on-surface-variant leading-relaxed">
-          Your {season.crop} is in the <span className="font-semibold text-on-surface">{growth.currentStage}</span> stage
-          (day {growth.daysAfterPlanting} of {cropInfo.varieties.find(v => v.name === season.variety)?.maturityDays ?? cropInfo.maturityDays}).
-          {stageGuidance(cropInfo, growth.currentStage)}
+          {growth.isBeforePlanting ? (
+            <>Your {season.crop} has not been planted yet. The recommended planting window opens on {fmtDate(season.planting_window_start ?? season.planting_date)}. Prepare your field, source certified {season.variety ?? 'seed'}, and plan for the first rains.</>
+          ) : (
+            <>Your {season.crop} is in the <span className="font-semibold text-on-surface">{growth.currentStage}</span> stage (day {growth.daysAfterPlanting} of {growth.maturityDays}).{stageGuidance(cropInfo, growth.currentStage ?? '')}</>
+          )}
         </p>
       </div>
 
@@ -343,8 +376,8 @@ function GuidanceTimeline({ seasons, onUpdated, coords }: { seasons: Season[]; o
         <h3 className="font-semibold text-on-surface mb-3">Growth Stages</h3>
         <div className="space-y-2">
           {cropInfo.stages.map((s) => {
-            const isCurrent = growth.daysAfterPlanting >= s.startDay && growth.daysAfterPlanting <= s.endDay;
-            const isPast = growth.daysAfterPlanting > s.endDay;
+            const isCurrent = !growth.isBeforePlanting && growth.daysAfterPlanting >= s.startDay && growth.daysAfterPlanting <= s.endDay;
+            const isPast = !growth.isBeforePlanting && growth.daysAfterPlanting > s.endDay;
             return (
               <div key={s.name} className={`flex items-start gap-3 p-2 rounded-lg ${isCurrent ? 'bg-primary-container/15' : ''}`}>
                 <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${isPast ? 'bg-primary' : isCurrent ? 'bg-primary ring-4 ring-primary/20' : 'bg-outline-variant'}`} />
@@ -428,7 +461,7 @@ function PlantingForm({ county, coords, onSaved }: { county: string; coords: { l
       try {
         const [w, s] = await Promise.all([
           fetchWeather(coords.latitude, coords.longitude),
-          fetchSoilData(coords.latitude, coords.longitude),
+          fetchSoilData(coords.latitude, coords.longitude, county),
         ]);
         rainfallForecast = w.daily.slice(0, 14).reduce((sum, d) => sum + d.precipitation, 0);
         soil = s;
@@ -453,6 +486,34 @@ function PlantingForm({ county, coords, onSaved }: { county: string; coords: { l
   async function saveSeason() {
     if (!result) return;
     setSaveMsg(null);
+
+    // Check for duplicate active season (same crop + county + sub-county)
+    const { data: existing } = await supabase
+      .from('seasons')
+      .select('id, crop, county, sub_county, status')
+      .eq('crop', crop)
+      .eq('county', selectedCounty)
+      .eq('sub_county', subCounty || null)
+      .eq('status', 'active');
+    if (existing && existing.length > 0) {
+      const confirmSave = window.confirm(
+        `You already have an active ${crop} season in ${selectedCounty}${subCounty ? ', ' + subCounty : ''}. Save this as a separate plot anyway?`
+      );
+      if (!confirmSave) {
+        setSaveMsg('Save cancelled — duplicate season not created.');
+        return;
+      }
+    }
+
+    const soilSnapshot = soilData ? {
+      soilType: soilData.soilType, ph: soilData.ph, organicCarbon: soilData.organicCarbon,
+      nitrogen: soilData.nitrogen, phosphorus: soilData.phosphorus, potassium: soilData.potassium,
+      waterHoldingCapacity: soilData.waterHoldingCapacity, drainage: soilData.drainage,
+      clayContent: soilData.clayContent, sandContent: soilData.sandContent, siltContent: soilData.siltContent,
+      bulkDensity: soilData.bulkDensity, cationExchangeCapacity: soilData.cationExchangeCapacity,
+      source: soilData.source,
+    } : null;
+
     const { data, error } = await supabase
       .from('seasons')
       .insert({
@@ -463,6 +524,13 @@ function PlantingForm({ county, coords, onSaved }: { county: string; coords: { l
         planting_date: dateRec.startDate,
         expected_harvest: result.estimatedHarvestDate,
         status: 'active',
+        maturity_days: result.maturityDays,
+        growth_profile_id: result.growthProfileId,
+        planting_window_start: dateRec.startDate,
+        planting_window_end: dateRec.endDate,
+        soil_data: soilSnapshot,
+        confidence_score: result.confidence,
+        confidence_breakdown: result.confidenceBreakdown,
       })
       .select()
       .single();
@@ -591,6 +659,27 @@ function ResultCard({
         </span>
         <span className="text-xs text-outline">Confidence {decision.confidence}%</span>
       </div>
+
+      {/* Confidence breakdown */}
+      {decision.confidenceBreakdown && (
+        <div className="bg-surface-container-high rounded-xl p-3 space-y-1.5">
+          <p className="text-xs font-semibold text-on-surface mb-1">Confidence Breakdown</p>
+          {[
+            { label: 'Rainfall fit', value: decision.confidenceBreakdown.rainfallFit },
+            { label: 'Soil fit', value: decision.confidenceBreakdown.soilFit },
+            { label: 'Timing fit', value: decision.confidenceBreakdown.timingFit },
+            { label: 'Zone fit', value: decision.confidenceBreakdown.zoneFit },
+          ].map((item) => (
+            <div key={item.label} className="flex items-center gap-2">
+              <span className="text-xs text-on-surface-variant w-20 shrink-0">{item.label}</span>
+              <div className="flex-1 h-1.5 bg-surface-container-lowest rounded-full overflow-hidden">
+                <div className={`h-full rounded-full ${item.value >= 80 ? 'bg-primary' : item.value >= 50 ? 'bg-tertiary' : 'bg-error'}`} style={{ width: `${item.value}%` }} />
+              </div>
+              <span className="text-xs font-medium text-on-surface w-8 text-right">{item.value}%</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <InfoTile icon={Calendar} label="Planting Window" value={decision.plantingWindow.label} />
@@ -835,10 +924,12 @@ function SeasonsList({
               {growth && (
                 <>
                   <div className="h-1.5 bg-surface-container-high rounded-full mt-2 overflow-hidden">
-                    <div className="h-full bg-primary rounded-full" style={{ width: `${growth.progressPercent}%` }} />
+                    <div className="h-full bg-primary rounded-full" style={{ width: `${growth.progressPercent}%`}} />
                   </div>
                   <p className="text-xs text-on-surface-variant mt-1">
-                    Week {currentWeek} · {growth.currentStage} · {growth.remainingDays}d to harvest
+                    {growth.isBeforePlanting
+                      ? `Not yet planted · opens in ${growth.remainingDays}d`
+                      : `Week ${currentWeek} · ${growth.currentStage} · ${growth.remainingDays}d to harvest`}
                   </p>
                 </>
               )}
