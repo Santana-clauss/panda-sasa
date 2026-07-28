@@ -62,22 +62,23 @@ export default function AdvisorScreen() {
   }, [seasons.length]);
 
   return (
-    <div className="pb-24">
-      <header className="bg-gradient-to-b from-primary to-primary-container px-5 pt-12 pb-6 rounded-b-3xl">
-        <h1 className="text-on-primary text-2xl font-bold">Smart Farm Guidance</h1>
-        <p className="text-on-primary/80 text-sm mt-1">
+    <div className="space-y-6">
+      {/* Header Banner */}
+      <header className="bg-gradient-to-r from-primary to-primary-container p-6 md:p-8 rounded-3xl text-on-primary shadow-md">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Smart Farm Guidance & Planning</h1>
+        <p className="text-on-primary/80 text-sm mt-1.5 font-medium">
           {seasons.length > 0
-            ? 'Your seasonal guide — week by week'
-            : 'Plan your planting, then get ongoing guidance'}
+            ? 'Your personalized seasonal roadmap — week by week'
+            : 'Plan your crop planting with soil & weather intelligence'}
         </p>
       </header>
 
-      {/* Tab switcher */}
-      <div className="px-5 mt-4">
-        <div className="flex bg-surface-container-high rounded-full p-1">
+      {/* Responsive Tab switcher */}
+      <div className="bg-surface-container-high/60 p-1.5 rounded-2xl border border-outline-variant/40 max-w-2xl">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
           {([
             ['guidance', 'Guidance'],
-            ['plan', 'Plan'],
+            ['plan', 'Plan Season'],
             ['crops', 'Crop Picks'],
             ['seasons', 'My Seasons'],
           ] as const).map(([k, label]) => {
@@ -87,8 +88,8 @@ export default function AdvisorScreen() {
                 key={k}
                 onClick={() => !disabled && setView(k)}
                 disabled={disabled}
-                className={`flex-1 py-2 rounded-full text-xs font-semibold transition-all ${
-                  view === k ? 'bg-primary text-on-primary shadow' : disabled ? 'text-outline/40' : 'text-on-surface-variant'
+                className={`py-2.5 px-3 rounded-xl text-xs md:text-sm font-bold transition-all ${
+                  view === k ? 'bg-primary text-on-primary shadow-sm' : disabled ? 'text-outline/40' : 'text-on-surface-variant hover:text-on-surface'
                 }`}
               >
                 {label}
@@ -98,7 +99,7 @@ export default function AdvisorScreen() {
         </div>
       </div>
 
-      <div className="px-5 mt-5">
+      <div className="w-full">
         {view === 'guidance' && seasons.length > 0 && (
           <GuidanceTimeline seasons={seasons} onUpdated={loadSeasons} coords={lookupCoords} />
         )}

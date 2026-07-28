@@ -7,35 +7,37 @@ export default function MapScreen() {
   const [selected, setSelected] = useState<County | null>(null);
 
   return (
-    <div className="pb-24">
-      <header className="bg-gradient-to-b from-primary to-primary-container px-5 pt-12 pb-6 rounded-b-3xl">
-        <h1 className="text-on-primary text-2xl font-bold">Farming Zones</h1>
-        <p className="text-on-primary/80 text-sm mt-1">Tap a county to see suitable crops and planting windows</p>
+    <div className="space-y-6">
+      {/* Header Banner */}
+      <header className="bg-gradient-to-r from-primary to-primary-container p-6 md:p-8 rounded-3xl text-on-primary shadow-md">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Kenya Agro-Ecological Zones</h1>
+        <p className="text-on-primary/80 text-sm mt-1.5 font-medium">Tap any county to explore climate parameters, rainfall windows, and optimal crop varieties</p>
       </header>
 
-      <div className="px-5 mt-5">
-        <p className="text-sm text-on-surface-variant mb-3">
-          Explore {COUNTIES.length} counties across Kenya. Each shows its agro-ecological zone, rainfall, and recommended crops.
+      {/* Responsive Grid of Counties */}
+      <div>
+        <p className="text-sm font-semibold text-on-surface-variant mb-4 px-1">
+          Showing {COUNTIES.length} Kenya Counties & Agricultural Zones
         </p>
-        <div className="grid grid-cols-1 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {COUNTIES.map((c) => (
             <button
               key={c.name}
               onClick={() => setSelected(c)}
-              className="w-full bg-surface-container-lowest rounded-2xl p-4 shadow-sm flex items-center gap-3 text-left hover:shadow-md transition-shadow"
+              className="w-full bg-surface-container-lowest rounded-3xl p-5 shadow-sm border border-outline-variant/50 flex items-center gap-4 text-left hover:border-primary hover:shadow-md transition-all group"
             >
-              <div className="w-10 h-10 rounded-full bg-primary-container/15 flex items-center justify-center shrink-0">
-                <MapPin size={18} className="text-primary" />
+              <div className="w-12 h-12 rounded-2xl bg-primary-container/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <MapPin size={22} className="text-primary" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-on-surface">{c.name}</p>
-                <p className="text-xs text-on-surface-variant">{c.agroEcologicalZone}</p>
+                <p className="font-bold text-on-surface text-base">{c.name}</p>
+                <p className="text-xs text-on-surface-variant font-medium mt-0.5">{c.agroEcologicalZone}</p>
               </div>
-              <div className="text-right">
-                <p className="text-xs font-medium text-primary">{c.rainfallZone}</p>
-                <p className="text-[11px] text-outline">{c.annualRainfallMm}mm/yr</p>
+              <div className="text-right shrink-0">
+                <p className="text-xs font-bold text-primary px-2 py-0.5 rounded-full bg-primary/10">{c.rainfallZone}</p>
+                <p className="text-[11px] text-outline font-medium mt-1">{c.annualRainfallMm}mm/yr</p>
               </div>
-              <ChevronRight size={18} className="text-outline" />
+              <ChevronRight size={18} className="text-outline group-hover:text-primary transition-colors" />
             </button>
           ))}
         </div>
@@ -49,9 +51,9 @@ export default function MapScreen() {
 function CountyDrawer({ county, onClose }: { county: County; onClose: () => void }) {
   const rankings = useMemo(() => recommendCrops(county.name), [county.name]);
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-surface-container-lowest w-full max-w-md max-h-[85vh] overflow-y-auto rounded-t-3xl p-5 pb-8 animate-slide-up">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-xs" onClick={onClose} />
+      <div className="relative bg-surface-container-lowest w-full max-w-lg sm:max-w-xl md:max-w-2xl max-h-[85vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl animate-slide-up border border-outline-variant/40">
         <div className="w-10 h-1 bg-outline-variant rounded-full mx-auto mb-4" />
         <div className="flex items-start justify-between mb-4">
           <div>

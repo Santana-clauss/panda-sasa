@@ -115,54 +115,56 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
   const greetingName = profile?.name?.split(' ')[0] ?? (isGuest ? 'Guest' : 'Farmer');
 
   return (
-    <div className="pb-24">
-      {/* Header */}
-      <header className="bg-gradient-to-b from-primary to-primary-container px-5 pt-12 pb-20 rounded-b-3xl">
-        <div className="flex items-center justify-between mb-1">
+    <div className="space-y-6">
+      {/* Header Banner */}
+      <header className="bg-gradient-to-r from-primary via-primary to-primary-container p-6 md:p-8 rounded-3xl shadow-md text-on-primary">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <p className="text-on-primary/70 text-sm">Jambo, {greetingName}</p>
-            <h1 className="text-on-primary text-2xl font-bold">Panda Sasa</h1>
+            <p className="text-on-primary/80 text-sm font-medium">Jambo, {greetingName}</p>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Panda Sasa Dashboard</h1>
+            <div className="flex items-center gap-2 text-on-primary/90 text-sm mt-1.5 font-medium">
+              <MapPin size={16} />
+              <span>{county} · {countyInfo?.agroEcologicalZone ?? 'Kenya'}</span>
+            </div>
           </div>
-          <button onClick={() => onNavigate('profile')} className="relative w-10 h-10 rounded-full bg-white/15 flex items-center justify-center">
+          <button onClick={() => onNavigate('profile')} className="self-start sm:self-auto relative p-3 rounded-2xl bg-white/15 hover:bg-white/25 transition-colors flex items-center gap-2">
             <Bell size={20} className="text-on-primary" />
+            <span className="text-xs font-semibold">Notifications</span>
             {notifs.length > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-error text-on-error text-[10px] font-bold flex items-center justify-center">
+              <span className="w-5 h-5 rounded-full bg-error text-on-error text-xs font-bold flex items-center justify-center">
                 {notifs.length}
               </span>
             )}
           </button>
         </div>
-        <div className="flex items-center gap-1.5 text-on-primary/80 text-sm mt-2">
-          <MapPin size={14} />
-          <span>{county} · {countyInfo?.agroEcologicalZone ?? 'Kenya'}</span>
-        </div>
+
         {/* Location controls */}
-        <div className="flex items-center gap-2 mt-2">
+        <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-white/15">
           <button
             onClick={useMyLocation}
             disabled={locating}
-            className="flex items-center gap-1.5 text-xs text-on-primary/90 bg-white/15 hover:bg-white/25 transition-colors px-3 py-1.5 rounded-full disabled:opacity-60"
+            className="flex items-center gap-1.5 text-xs text-on-primary/90 bg-white/15 hover:bg-white/25 transition-colors px-3.5 py-2 rounded-xl disabled:opacity-60 font-medium"
           >
-            {locating ? <Loader2 size={13} className="animate-spin" /> : <LocateFixed size={13} />}
-            {locating ? 'Detecting…' : 'Use my current location'}
+            {locating ? <Loader2 size={14} className="animate-spin" /> : <LocateFixed size={14} />}
+            {locating ? 'Detecting location…' : 'Use my GPS location'}
           </button>
           <button
             onClick={() => setShowCountyPicker(!showCountyPicker)}
-            className="flex items-center gap-1.5 text-xs text-on-primary/90 bg-white/15 hover:bg-white/25 transition-colors px-3 py-1.5 rounded-full"
+            className="flex items-center gap-1.5 text-xs text-on-primary/90 bg-white/15 hover:bg-white/25 transition-colors px-3.5 py-2 rounded-xl font-medium"
           >
-            <MapPin size={13} /> Change
+            <MapPin size={14} /> Select County
           </button>
         </div>
-        {locMsg && <p className="text-[11px] text-on-primary/70 mt-1.5">{locMsg}</p>}
+        {locMsg && <p className="text-xs text-on-primary/80 mt-2 font-medium">{locMsg}</p>}
         {showCountyPicker && (
-          <div className="mt-2 bg-white/15 rounded-xl p-2 max-h-40 overflow-y-auto">
-            <div className="grid grid-cols-2 gap-1">
+          <div className="mt-3 bg-white/20 backdrop-blur-md rounded-2xl p-3 max-h-48 overflow-y-auto border border-white/20">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
               {COUNTIES.map((c) => (
                 <button
                   key={c.name}
                   onClick={() => selectCounty(c.name)}
-                  className={`text-xs px-2.5 py-1.5 rounded-lg text-left transition-colors ${
-                    c.name === county ? 'bg-white/30 text-on-primary font-semibold' : 'text-on-primary/80 hover:bg-white/20'
+                  className={`text-xs px-3 py-2 rounded-xl text-left transition-colors ${
+                    c.name === county ? 'bg-white text-primary font-bold shadow-sm' : 'text-on-primary/90 hover:bg-white/20'
                   }`}
                 >
                   {c.name}
@@ -173,148 +175,175 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
         )}
       </header>
 
-      {/* Weather card */}
-      <div className="px-5 -mt-12">
-        <button
-          onClick={() => onNavigate('weather')}
-          className="w-full bg-surface-container-lowest rounded-2xl p-4 shadow-md flex items-center gap-4 hover:shadow-lg transition-shadow text-left"
-        >
-          <div className="w-12 h-12 rounded-full bg-primary-container/15 flex items-center justify-center">
-            {weatherCode != null ? <WeatherIcon code={weatherCode} size={26} /> : <CloudSun size={26} className="text-primary" />}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-on-surface">{temp != null ? `${temp.toFixed(0)}°` : '—'}</span>
-              <span className="text-sm text-outline">today</span>
+      {/* Grid Row 1: Weather + Active Season Tracker */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Weather Summary Card */}
+        <div className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm border border-outline-variant/50 flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-primary">Weather & Climate</span>
+              <h2 className="text-xl font-bold text-on-surface mt-1">{county} Forecast</h2>
             </div>
-            <p className="text-xs text-on-surface-variant truncate">
-              {weatherSummary ?? 'Tap to view 14-day forecast and planting advice'}
+            <div className="w-12 h-12 rounded-2xl bg-primary-container/20 flex items-center justify-center text-primary">
+              {weatherCode != null ? <WeatherIcon code={weatherCode} size={28} /> : <CloudSun size={28} />}
+            </div>
+          </div>
+          <div className="my-4">
+            <div className="flex items-baseline gap-2">
+              <span className="text-4xl font-extrabold text-on-surface">{temp != null ? `${temp.toFixed(0)}°C` : '—'}</span>
+              <span className="text-sm font-medium text-outline">Current Temperature</span>
+            </div>
+            <p className="text-sm text-on-surface-variant mt-2 leading-relaxed">
+              {weatherSummary ?? 'Tap below to view full 14-day forecast and rainfall advisory.'}
             </p>
           </div>
-          <ChevronRight size={20} className="text-outline" />
-        </button>
-      </div>
-
-      {/* My Season — ongoing guidance */}
-      <section className="px-5 mt-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold text-on-surface">My Season</h2>
-          {activeSeason && (
-            <button onClick={() => onNavigate('advisor')} className="text-sm text-primary font-medium">Guidance</button>
-          )}
-        </div>
-        {activeSeason && growth ? (
           <button
-            onClick={() => onNavigate('advisor')}
-            className="w-full bg-surface-container-lowest rounded-2xl p-5 shadow-sm text-left"
+            onClick={() => onNavigate('weather')}
+            className="w-full mt-2 py-3 px-4 rounded-2xl bg-surface-container-high hover:bg-primary hover:text-on-primary transition-all text-sm font-semibold flex items-center justify-between text-on-surface"
           >
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <span className="text-3xl">{getCrop(activeSeason.crop)?.emoji ?? '🌱'}</span>
-                <div>
-                  <p className="font-semibold text-on-surface">{activeSeason.crop}</p>
-                  <p className="text-xs text-outline">{activeSeason.variety ?? 'Standard variety'}</p>
+            <span>View Detailed Weather Advisor</span>
+            <ChevronRight size={18} />
+          </button>
+        </div>
+
+        {/* My Season Tracker */}
+        <div className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm border border-outline-variant/50 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-primary">Season Progress</span>
+              <h2 className="text-xl font-bold text-on-surface mt-1">My Active Season</h2>
+            </div>
+            {activeSeason && (
+              <button onClick={() => onNavigate('advisor')} className="text-sm text-primary font-semibold hover:underline">
+                View Plan →
+              </button>
+            )}
+          </div>
+
+          {activeSeason && growth ? (
+            <div className="my-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl p-2 rounded-2xl bg-surface-container-low">{getCrop(activeSeason.crop)?.emoji ?? '🌱'}</span>
+                  <div>
+                    <p className="font-bold text-lg text-on-surface">{activeSeason.crop}</p>
+                    <p className="text-xs text-outline">{activeSeason.variety ?? 'Standard variety'}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  {growth.isBeforePlanting ? (
+                    <>
+                      <p className="text-xs text-outline">Opens in</p>
+                      <p className="text-base font-bold text-primary">{growth.remainingDays} days</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs text-outline">Day {growth.daysAfterPlanting}</p>
+                      <p className="text-base font-bold text-primary">{growth.currentStage}</p>
+                    </>
+                  )}
                 </div>
               </div>
-              <div className="text-right">
-                {growth.isBeforePlanting ? (
-                  <>
-                    <p className="text-xs text-outline">Opens in</p>
-                    <p className="text-sm font-medium text-primary">{growth.remainingDays}d</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-xs text-outline">Day {growth.daysAfterPlanting}</p>
-                    <p className="text-sm font-medium text-primary">{growth.currentStage}</p>
-                  </>
-                )}
+
+              <div>
+                <div className="h-2.5 bg-surface-container-high rounded-full overflow-hidden mb-2">
+                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${growth.progressPercent}%` }} />
+                </div>
+                <div className="flex items-center justify-between text-xs text-on-surface-variant font-medium">
+                  <span className="flex items-center gap-1"><Clock size={13} /> {growth.remainingDays}d remaining</span>
+                  <span>Est. Harvest: {growth.harvestDate}</span>
+                </div>
               </div>
-            </div>
-            <div className="h-2 bg-surface-container-high rounded-full overflow-hidden mb-2">
-              <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${growth.progressPercent}%` }} />
-            </div>
-            <div className="flex items-center justify-between text-xs text-on-surface-variant mb-3">
-              <span className="flex items-center gap-1"><Clock size={12} /> {growth.remainingDays}d to harvest</span>
-              <span>Harvest: {growth.harvestDate}</span>
-            </div>
-            {/* This week's task preview — from actual saved activities */}
-            {(() => {
-              if (growth.isBeforePlanting) {
+
+              {/* Task preview */}
+              {(() => {
+                if (growth.isBeforePlanting) {
+                  return (
+                    <div className="bg-primary-container/15 rounded-2xl p-3.5 flex items-start gap-3">
+                      <CircleDot size={18} className="text-primary shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-bold text-primary">Pre-Planting Stage</p>
+                        <p className="text-sm font-semibold text-on-surface mt-0.5">Prepare soil & certified seeds</p>
+                      </div>
+                    </div>
+                  );
+                }
+                const currentWeek = Math.floor(growth.daysAfterPlanting / 7) + 1;
+                const task = currentActivity;
+                if (!task) return null;
                 return (
-                  <div className="bg-primary-container/15 rounded-xl p-3 flex items-start gap-2.5">
-                    <CircleDot size={16} className="text-primary shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-xs font-semibold text-primary">Not yet planted</p>
-                      <p className="text-sm text-on-surface font-medium mt-0.5">Planting window opens in {growth.remainingDays}d</p>
-                      <p className="text-xs text-on-surface-variant mt-0.5">Prepare your field and source certified seed.</p>
+                  <div className="bg-primary-container/15 rounded-2xl p-3.5 flex items-start gap-3">
+                    <CircleDot size={18} className="text-primary shrink-0 mt-0.5 animate-pulse" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold text-primary">This Week · Week {currentWeek}</p>
+                        {task.completed && <span className="text-xs text-primary font-bold">✓ Completed</span>}
+                      </div>
+                      <p className="text-sm font-semibold text-on-surface mt-0.5 truncate">{task.title}</p>
                     </div>
                   </div>
                 );
-              }
-              const currentWeek = Math.floor(growth.daysAfterPlanting / 7) + 1;
-              const task = currentActivity;
-              if (!task) return null;
-              return (
-                <div className="bg-primary-container/15 rounded-xl p-3 flex items-start gap-2.5">
-                  <CircleDot size={16} className="text-primary shrink-0 mt-0.5 animate-pulse" />
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold text-primary">This Week · Week {currentWeek}</p>
-                      {task.completed && <span className="text-[10px] text-primary font-medium">✓ Done</span>}
-                    </div>
-                    <p className="text-sm text-on-surface font-medium mt-0.5">{task.title}</p>
-                    <p className="text-xs text-on-surface-variant mt-0.5">{task.description}</p>
+              })()}
+            </div>
+          ) : (
+            <div className="my-6 text-center py-4">
+              <Sprout size={36} className="mx-auto text-outline/60 mb-2" />
+              <p className="text-sm font-semibold text-on-surface">No active season tracked yet</p>
+              <p className="text-xs text-outline mt-1 max-w-xs mx-auto">Get week-by-week guidance customized for your crop and region.</p>
+              <button
+                onClick={() => onNavigate('advisor')}
+                className="mt-4 px-5 py-2.5 rounded-xl bg-primary text-on-primary text-xs font-bold shadow-md hover:bg-primary/90 transition-all"
+              >
+                Plan First Season
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Grid Row 2: Reminders + Recommended Crops */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Reminders Column */}
+        {notifs.length > 0 && (
+          <div className="lg:col-span-4 bg-surface-container-lowest rounded-3xl p-6 shadow-sm border border-outline-variant/50">
+            <h2 className="text-lg font-bold text-on-surface mb-4 flex items-center justify-between">
+              <span>Reminders</span>
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary">{notifs.length} new</span>
+            </h2>
+            <div className="space-y-3">
+              {notifs.slice(0, 4).map((n) => (
+                <div key={n.id} className="bg-surface-container-low/70 rounded-2xl p-3.5 flex items-start gap-3 border border-outline-variant/30">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                    n.priority === 'high' ? 'bg-error-container text-on-error-container' : 'bg-primary-container/30 text-primary'
+                  }`}>
+                    {n.priority === 'high' ? <AlertTriangle size={16} /> : <Bell size={16} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-on-surface">{n.title}</p>
+                    <p className="text-xs text-on-surface-variant line-clamp-2 mt-0.5">{n.body}</p>
                   </div>
                 </div>
-              );
-            })()}
-          </button>
-        ) : (
-          <button
-            onClick={() => onNavigate('advisor')}
-            className="w-full bg-surface-container-lowest rounded-2xl p-5 border-2 border-dashed border-outline-variant text-center"
-          >
-            <Sprout size={28} className="mx-auto text-outline mb-2" />
-            <p className="text-sm font-medium text-on-surface">Plan your first season</p>
-            <p className="text-xs text-outline mt-0.5">Get week-by-week guidance from planting to harvest</p>
-          </button>
+              ))}
+            </div>
+          </div>
         )}
-      </section>
 
-      {/* Notifications */}
-      {notifs.length > 0 && (
-        <section className="px-5 mt-6">
-          <h2 className="text-lg font-bold text-on-surface mb-3">Reminders</h2>
-          <div className="space-y-2">
-            {notifs.slice(0, 3).map((n) => (
-              <div key={n.id} className="bg-surface-container-lowest rounded-xl p-3 flex items-start gap-3">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                  n.priority === 'high' ? 'bg-error-container' : n.priority === 'medium' ? 'bg-tertiary-fixed' : 'bg-surface-container-high'
-                }`}>
-                  {n.priority === 'high' ? <AlertTriangle size={16} className="text-on-error-container" /> : <Bell size={16} className="text-on-surface-variant" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-on-surface">{n.title}</p>
-                  <p className="text-xs text-on-surface-variant line-clamp-2">{n.body}</p>
-                </div>
-              </div>
+        {/* Recommended Crops Grid */}
+        <div className={`${notifs.length > 0 ? 'lg:col-span-8' : 'lg:col-span-12'} bg-surface-container-lowest rounded-3xl p-6 shadow-sm border border-outline-variant/50`}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-bold text-on-surface">Top Recommended Crops</h2>
+              <p className="text-xs text-outline">Tailored for {county} soil & rainfall profile</p>
+            </div>
+            <TrendingUp size={20} className="text-primary" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {rankings.slice(0, 4).map((r) => (
+              <CropCard key={r.crop.name} ranking={r} onClick={() => onNavigate('advisor')} />
             ))}
           </div>
-        </section>
-      )}
-
-      {/* Crop recommendations */}
-      <section className="px-5 mt-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold text-on-surface">Recommended for {county}</h2>
-          <TrendingUp size={18} className="text-primary" />
         </div>
-        <div className="space-y-2.5">
-          {rankings.slice(0, 5).map((r) => (
-            <CropCard key={r.crop.name} ranking={r} onClick={() => onNavigate('advisor')} />
-          ))}
-        </div>
-      </section>
+      </div>
     </div>
   );
 }
@@ -324,20 +353,21 @@ function CropCard({ ranking, onClick }: { ranking: CropRanking; onClick: () => v
   return (
     <button
       onClick={onClick}
-      className="w-full bg-surface-container-lowest rounded-2xl p-4 shadow-sm flex items-center gap-4 text-left hover:shadow-md transition-shadow"
+      className="w-full bg-surface-container-low/60 rounded-2xl p-4 border border-outline-variant/30 flex items-center gap-4 text-left hover:bg-surface-container-high hover:border-primary/40 transition-all group"
     >
-      <span className="text-3xl">{crop.emoji}</span>
+      <span className="text-3xl p-2 rounded-2xl bg-surface-container-lowest shadow-xs group-hover:scale-105 transition-transform">{crop.emoji}</span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
-          <p className="font-semibold text-on-surface">{crop.name}</p>
-          <span className="text-sm font-bold text-primary">{score}%</span>
+          <p className="font-bold text-on-surface">{crop.name}</p>
+          <span className="text-xs font-extrabold text-primary px-2 py-0.5 rounded-full bg-primary/10">{score}%</span>
         </div>
-        <p className="text-xs text-on-surface-variant line-clamp-1">{reasons[0]}</p>
-        <div className="h-1 bg-surface-container-high rounded-full mt-1.5 overflow-hidden">
+        <p className="text-xs text-on-surface-variant line-clamp-1 mt-0.5">{reasons[0]}</p>
+        <div className="h-1.5 bg-surface-container-high rounded-full mt-2 overflow-hidden">
           <div className="h-full bg-primary rounded-full" style={{ width: `${score}%` }} />
         </div>
       </div>
-      <ChevronRight size={18} className="text-outline" />
+      <ChevronRight size={18} className="text-outline group-hover:text-primary transition-colors" />
     </button>
   );
 }
+

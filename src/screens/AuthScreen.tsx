@@ -25,15 +25,15 @@ export default function AuthScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary to-primary-container flex flex-col">
-      <div className="flex-1 flex flex-col justify-center px-6 py-10 max-w-md mx-auto w-full">
+    <div className="min-h-screen bg-gradient-to-br from-primary via-primary-container to-surface-container-high flex flex-col items-center justify-center p-4 md:p-8">
+      <div className="w-full max-w-md md:max-w-lg lg:max-w-xl mx-auto py-8">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-20 h-20 rounded-full bg-white/15 backdrop-blur-sm flex items-center justify-center mb-4 ring-4 ring-white/10">
-            <Sprout size={40} className="text-on-primary" strokeWidth={2.2} />
+          <div className="w-20 h-20 rounded-3xl bg-white/15 backdrop-blur-md flex items-center justify-center mb-4 ring-4 ring-white/10 shadow-lg">
+            <Sprout size={44} className="text-on-primary" strokeWidth={2.2} />
           </div>
-          <h1 className="text-3xl font-bold text-on-primary tracking-tight">Panda Sasa</h1>
-          <p className="text-on-primary/80 text-sm mt-1.5 text-center">
-            Smart planting decisions for Kenyan farmers
+          <h1 className="text-3xl md:text-4xl font-extrabold text-on-primary tracking-tight">Panda Sasa</h1>
+          <p className="text-on-primary/80 text-sm md:text-base mt-1.5 text-center font-medium max-w-sm">
+            Smart planting & climate advisory for Kenyan farmers
           </p>
         </div>
 

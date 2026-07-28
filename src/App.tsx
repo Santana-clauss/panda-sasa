@@ -25,13 +25,15 @@ function MainApp() {
   }
 
   return (
-    <div className="min-h-screen bg-surface max-w-md mx-auto bg-surface-container-low/30">
-      {tab === 'home' && <HomeScreen onNavigate={setTab} />}
-      {tab === 'advisor' && <AdvisorScreen />}
-      {tab === 'weather' && <WeatherScreen />}
-      {tab === 'map' && <MapScreen />}
-      {tab === 'profile' && <ProfileScreen />}
+    <div className="min-h-screen bg-surface md:flex">
       <BottomNav active={tab} onChange={setTab} />
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 md:px-8 md:py-8 pb-24 md:pb-8 transition-all">
+        {tab === 'home' && <HomeScreen onNavigate={setTab} />}
+        {tab === 'advisor' && <AdvisorScreen />}
+        {tab === 'weather' && <WeatherScreen />}
+        {tab === 'map' && <MapScreen />}
+        {tab === 'profile' && <ProfileScreen />}
+      </main>
     </div>
   );
 }
