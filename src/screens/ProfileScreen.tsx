@@ -39,97 +39,116 @@ export default function ProfileScreen() {
   }
 
   return (
-    <div className="pb-24">
-      <header className="bg-gradient-to-b from-primary to-primary-container px-5 pt-12 pb-6 rounded-b-3xl">
-        <h1 className="text-on-primary text-2xl font-bold">Profile</h1>
+    <div className="space-y-6">
+      {/* Header Banner */}
+      <header className="bg-gradient-to-r from-primary to-primary-container p-6 md:p-8 rounded-3xl text-on-primary shadow-md">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Farmer Profile & Settings</h1>
+        <p className="text-on-primary/80 text-sm mt-1.5 font-medium">Manage your county preferences, storage assessment tools, and account</p>
       </header>
 
-      <div className="px-5 mt-5 space-y-4">
-        {/* Profile card */}
-        <div className="bg-surface-container-lowest rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="w-14 h-14 rounded-full bg-primary-container/15 flex items-center justify-center">
-              <UserIcon size={26} className="text-primary" />
+      {/* Grid Layout: Left Column (Profile & Account), Right Column (Tools & Assessment History) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-5 space-y-6">
+          {/* Profile card */}
+          <div className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm border border-outline-variant/50">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-16 h-16 rounded-2xl bg-primary-container/20 flex items-center justify-center">
+                <UserIcon size={32} className="text-primary" />
+              </div>
+              <div>
+                <p className="font-extrabold text-on-surface text-xl">
+                  {profile?.name ?? (isGuest ? 'Guest Farmer' : 'Farmer')}
+                </p>
+                <p className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary w-fit mt-1">
+                  {isGuest ? 'Guest Mode' : 'Registered Account'}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="font-semibold text-on-surface text-lg">
-                {profile?.name ?? (isGuest ? 'Guest Farmer' : 'Farmer')}
-              </p>
-              <p className="text-xs text-outline">{isGuest ? 'Guest mode — data not saved' : 'Registered farmer'}</p>
-            </div>
+
+            {!isGuest && (
+              <div className="divide-y divide-outline-variant/40">
+                <ProfileRow icon={MapPin} label="County" value={profile?.county ?? 'Nakuru'} />
+                <ProfileRow icon={MapPin} label="Sub-county" value={profile?.sub_county ?? '—'} />
+                <ProfileRow icon={Globe} label="Language" value={langName(profile?.preferred_language ?? 'en')} />
+              </div>
+            )}
+
+            {!isGuest && !editing && (
+              <button
+                onClick={() => setEditing(true)}
+                className="w-full mt-6 border border-outline text-on-surface text-sm font-bold py-3 rounded-2xl hover:bg-surface-container-high transition-colors"
+              >
+                Edit Profile Settings
+              </button>
+            )}
+
+            {isGuest && (
+              <button
+                onClick={signOut}
+                className="w-full mt-6 bg-primary text-on-primary text-sm font-bold py-3 rounded-2xl hover:bg-primary/90 transition-colors shadow-sm"
+              >
+                Sign In to Sync Seasons & Data
+              </button>
+            )}
           </div>
 
+          {editing && profile && (
+            <EditProfileForm
+              profile={profile}
+              onClose={() => setEditing(false)}
+              onSaved={async () => {
+                await refreshProfile();
+                setEditing(false);
+              }}
+            />
+          )}
+
           {!isGuest && (
-            <>
-              <ProfileRow icon={MapPin} label="County" value={profile?.county ?? 'Nakuru'} />
-              <ProfileRow icon={MapPin} label="Sub-county" value={profile?.sub_county ?? '—'} />
-              <ProfileRow icon={Globe} label="Language" value={langName(profile?.preferred_language ?? 'en')} />
-            </>
-          )}
-
-          {!isGuest && !editing && (
-            <button
-              onClick={() => setEditing(true)}
-              className="w-full mt-3 border border-outline text-on-surface text-sm font-medium py-2.5 rounded-full hover:bg-surface-container-high transition-colors"
-            >
-              Edit Profile
-            </button>
+            <div className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm border border-outline-variant/50">
+              <button
+                onClick={signOut}
+                className="w-full flex items-center justify-center gap-2 text-error font-bold py-3 px-4 rounded-2xl bg-error-container/20 hover:bg-error-container/40 transition-colors text-sm"
+              >
+                <LogOut size={18} /> Sign Out of Panda Sasa
+              </button>
+            </div>
           )}
         </div>
 
-        {editing && profile && (
-          <EditProfileForm
-            profile={profile}
-            onClose={() => setEditing(false)}
-            onSaved={async () => {
-              await refreshProfile();
-              setEditing(false);
-            }}
-          />
-        )}
+        {/* Right Column: Tools & Storage Assessment */}
+        <div className="lg:col-span-7 space-y-6">
+          <div className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm border border-outline-variant/50 space-y-3">
+            <h2 className="text-lg font-bold text-on-surface mb-2">Farming Tools & Diagnostics</h2>
+            <ToolButton
+              icon={Shield}
+              title="Storage Risk Calculator"
+              subtitle="Assess post-harvest spoilage and aflatoxin risk for your crops"
+              onClick={() => setView('storage')}
+            />
+            <ToolButton
+              icon={Database}
+              title="Storage Assessment History"
+              subtitle="Review your past storage safety assessments"
+              onClick={() => setView('history')}
+            />
+            <ToolButton
+              icon={HardDrive}
+              title="Offline Guidance & Data"
+              subtitle="Learn how Panda Sasa caches advisory data locally"
+              onClick={() => setView('offline')}
+            />
+          </div>
 
-        {/* Tools */}
-        <div className="space-y-2">
-          <h2 className="text-sm font-semibold text-on-surface-variant px-1">Tools</h2>
-          <ToolButton
-            icon={Shield}
-            title="Storage Risk Calculator"
-            subtitle="Assess spoilage and aflatoxin risk"
-            onClick={() => setView('storage')}
-          />
-          <ToolButton
-            icon={Database}
-            title="Storage History"
-            subtitle="Past risk assessments"
-            onClick={() => setView('history')}
-          />
-          <ToolButton
-            icon={WifiOff}
-            title="Offline Support"
-            subtitle="View saved data without internet"
-            onClick={() => setView('offline')}
-          />
+          {/* About Card */}
+          <div className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm border border-outline-variant/50">
+            <h3 className="text-base font-bold text-on-surface mb-2 flex items-center gap-2">
+              <Info size={18} className="text-primary" /> About Panda Sasa
+            </h3>
+            <p className="text-sm text-on-surface-variant leading-relaxed">
+              An agricultural decision-support platform for Kenyan farmers. Recommendations are computed from KALRO crop calendars, localized agro-ecological zones, and Open-Meteo rainfall forecasts.
+            </p>
+          </div>
         </div>
-
-        {/* About */}
-        <div className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm">
-          <h3 className="text-sm font-semibold text-on-surface mb-1.5 flex items-center gap-2">
-            <Info size={15} className="text-primary" /> About Panda Sasa
-          </h3>
-          <p className="text-xs text-on-surface-variant leading-relaxed">
-            An agricultural decision-support tool for Kenyan farmers. Recommendations are based on KALRO crop calendars, agro-ecological zones, and Open-Meteo rainfall forecasts.
-          </p>
-        </div>
-
-        {/* Sign out */}
-        {!isGuest && (
-          <button
-            onClick={signOut}
-            className="w-full flex items-center justify-center gap-2 text-error text-sm font-medium py-3 rounded-full border border-error/30 hover:bg-error-container/30 transition-colors"
-          >
-            <LogOut size={16} /> Sign Out
-          </button>
-        )}
       </div>
     </div>
   );
