@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CloudRain, Droplets, Wind, Thermometer, Sun, AlertTriangle, CheckCircle2, CloudSun } from 'lucide-react';
+import { CloudRain, Droplets, Wind, Thermometer, Sun, AlertTriangle, CheckCircle2, CloudSun, Mountain, Sprout } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { COUNTIES } from '@/lib/data';
 import { fetchWeather, weatherToRecommendations, weatherLabel, type WeatherData, type WeatherRecommendation } from '@/lib/weather';
@@ -74,6 +74,11 @@ export default function WeatherScreen() {
             <Metric icon={Droplets} label="Humidity" value={`${weather.current.humidity.toFixed(0)}%`} />
             <Metric icon={Wind} label="Wind" value={`${weather.current.windSpeed.toFixed(0)} km/h`} />
             <Metric icon={CloudRain} label="Rain" value={`${weather.current.precipitation.toFixed(1)}mm`} />
+          </div>
+          <div className="grid grid-cols-3 gap-2 mt-3">
+            <Metric icon={Thermometer} label="Soil Temp" value={`${weather.current.soilTemperature.toFixed(0)}°C`} />
+            <Metric icon={Sun} label="ET0" value={`${weather.current.evapotranspiration.toFixed(1)}mm`} />
+            <Metric icon={Mountain} label="Elevation" value={weather.elevation != null ? `${weather.elevation.toFixed(0)}m` : '—'} />
           </div>
         </div>
       </div>

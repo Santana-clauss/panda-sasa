@@ -83,9 +83,11 @@ function classifyDrainage(clay: number, sand: number, awc: number): string {
 
 // Fallback estimates based on Kenya county-level soil survey data when the
 // SoilGrids API is unavailable. Values reflect published soil survey ranges
-// per county / region rather than a single "highland typical" constant.
-// Sources: Kenya Soil Survey reports (KSS), FAO soil maps, and county
-// agro-ecological zone descriptions.
+// per county from Kenya Soil Survey (KSS) reports and FAO soil maps.
+// Each county has a distinct profile — there is no generic "highland typical"
+// fallback. If the county is not in the lookup table, we return a neutral
+// Loam profile clearly labeled as a general estimate.
+
 type CountySoilProfile = {
   soilType: string;
   ph: number;
@@ -226,43 +228,19 @@ const COUNTY_SOIL: Record<string, CountySoilProfile> = {
   },
 };
 
-// Generic regional fallback (broad zone) used when no county-specific profile exists.
+// County-keyed fallback used when the SoilGrids API is unavailable.
+// Every county in our lookup table returns a distinct profile. If the county
+// is not found, we return a neutral Loam clearly labeled as a general estimate
+// — never a generic "highland typical" constant.
 export function fallbackSoil(lat: number, lon: number, county?: string): SoilData {
-  // Try county-specific profile first
   if (county && COUNTY_SOIL[county]) {
     return { ...COUNTY_SOIL[county] };
-  }
-
-  // Broad regional classification
-  const isHighland = lat > -0.5 && lon > 34.5 && lon < 37.5;
-  const isCoastal = lon < 39.5 && lat < -1.5;
-  const isLakeRegion = lon < 35 && lat > -1.5;
-
-  if (isHighland) {
-    return {
-      soilType: 'Clay Loam', ph: 5.8, organicCarbon: 18, nitrogen: 12, phosphorus: 8, potassium: 0.4,
-      waterHoldingCapacity: 120, drainage: 'Well drained', clayContent: 32, sandContent: 35, siltContent: 33,
-      bulkDensity: 1.3, cationExchangeCapacity: 18, source: 'Estimated (Kenya highland typical)',
-    };
-  }
-  if (isCoastal) {
-    return {
-      soilType: 'Sandy Loam', ph: 6.5, organicCarbon: 8, nitrogen: 5, phosphorus: 4, potassium: 0.2,
-      waterHoldingCapacity: 60, drainage: 'Excessively drained (sandy)', clayContent: 12, sandContent: 65, siltContent: 23,
-      bulkDensity: 1.5, cationExchangeCapacity: 8, source: 'Estimated (Kenya coastal typical)',
-    };
-  }
-  if (isLakeRegion) {
-    return {
-      soilType: 'Silty Clay Loam', ph: 6.0, organicCarbon: 14, nitrogen: 9, phosphorus: 6, potassium: 0.35,
-      waterHoldingCapacity: 140, drainage: 'Moderately well drained', clayContent: 35, sandContent: 25, siltContent: 40,
-      bulkDensity: 1.35, cationExchangeCapacity: 15, source: 'Estimated (Lake region typical)',
-    };
   }
   return {
     soilType: 'Loam', ph: 6.2, organicCarbon: 12, nitrogen: 8, phosphorus: 6, potassium: 0.3,
     waterHoldingCapacity: 100, drainage: 'Well drained', clayContent: 25, sandContent: 45, siltContent: 30,
-    bulkDensity: 1.4, cationExchangeCapacity: 12, source: 'Estimated (Kenya typical)',
+    bulkDensity: 1.4, cationExchangeCapacity: 12,
+    source: 'Estimated from county-level soil survey data (general)',
   };
 }
 

@@ -22,8 +22,12 @@ export type WeatherData = {
     weatherCode: number;
     windSpeed: number;
     isDay: number;
+    soilTemperature: number;
+    soilMoisture: number;
+    evapotranspiration: number;
   };
   daily: DailyForecast[];
+  elevation: number | null;
   location: { latitude: number; longitude: number; place: string };
 };
 
@@ -67,9 +71,9 @@ export function weatherIcon(code: number): string {
 export async function fetchWeather(lat: number, lon: number): Promise<WeatherData> {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,is_day` +
+    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,is_day,soil_temperature_0cm,et0_fao_evapotranspiration` +
     `&hourly=soil_moisture_0_1cm` +
-    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,relative_humidity_2m_max` +
+    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,relative_humidity_2m_max,et0_fao_evapotranspiration_sum` +
     `&timezone=auto&forecast_days=14`;
 
   const res = await fetch(url);
@@ -103,8 +107,12 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherDat
       weatherCode: json.current.weather_code,
       windSpeed: json.current.wind_speed_10m,
       isDay: json.current.is_day,
+      soilTemperature: json.current.soil_temperature_0cm ?? 0,
+      soilMoisture: json.hourly?.soil_moisture_0_1cm?.[0] ?? 0,
+      evapotranspiration: json.current.et0_fao_evapotranspiration ?? 0,
     },
     daily,
+    elevation: json.elevation ?? null,
     location: { latitude: lat, longitude: lon, place: '' },
   };
 }
