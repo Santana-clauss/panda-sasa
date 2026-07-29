@@ -332,6 +332,18 @@ export type CropInfo = {
   stages: { name: string; startDay: number; endDay: number; description: string }[];
   // Weekly activity template keyed by week number
   weeklyActivities: { week: number; title: string; description: string; category: string }[];
+  // ── Agronomic requirements (for live-data recommendation engine) ──
+  // Optimal soil pH range
+  optimalPhMin: number;
+  optimalPhMax: number;
+  // Optimal temperature range (°C) — the crop grows best between these temps
+  optimalTempMin: number;
+  optimalTempMax: number;
+  // Altitude range (meters above sea level)
+  altitudeMin: number;
+  altitudeMax: number;
+  // Drought tolerance score (0 = very sensitive, 100 = highly drought tolerant)
+  droughtTolerance: number;
 };
 
 export const CROPS: CropInfo[] = [
@@ -343,6 +355,10 @@ export const CROPS: CropInfo[] = [
     minRainfall: 400,
     maxRainfall: 1200,
     zones: ['Highland', 'Upper Midland', 'Lower Midland'],
+    optimalPhMin: 5.5, optimalPhMax: 7.0,
+    optimalTempMin: 18, optimalTempMax: 32,
+    altitudeMin: 0, altitudeMax: 2200,
+    droughtTolerance: 35,
     seasons: ['LR', 'SR'],
     varieties: [
       { name: 'H614', maturityDays: 140, type: 'long', notes: 'Highland variety, high yield, needs 140+ days' },
@@ -385,6 +401,10 @@ export const CROPS: CropInfo[] = [
     minRainfall: 300,
     maxRainfall: 900,
     zones: ['Highland', 'Upper Midland', 'Lower Midland', 'Coastal Lowland'],
+    optimalPhMin: 5.5, optimalPhMax: 7.0,
+    optimalTempMin: 16, optimalTempMax: 28,
+    altitudeMin: 500, altitudeMax: 2000,
+    droughtTolerance: 30,
     seasons: ['LR', 'SR'],
     varieties: [
       { name: 'Rosecoco', maturityDays: 80, type: 'medium', notes: 'Popular, good market demand' },
@@ -422,6 +442,10 @@ export const CROPS: CropInfo[] = [
     minRainfall: 250,
     maxRainfall: 800,
     zones: ['Lower Midland', 'Coastal Lowland', 'Upper Midland'],
+    optimalPhMin: 5.5, optimalPhMax: 7.5,
+    optimalTempMin: 20, optimalTempMax: 35,
+    altitudeMin: 0, altitudeMax: 1800,
+    droughtTolerance: 75,
     seasons: ['LR', 'SR'],
     varieties: [
       { name: 'Gadam', maturityDays: 90, type: 'short', notes: 'Early maturing, drought tolerant' },
@@ -459,6 +483,10 @@ export const CROPS: CropInfo[] = [
     minRainfall: 200,
     maxRainfall: 600,
     zones: ['Lower Midland', 'Coastal Lowland'],
+    optimalPhMin: 5.0, optimalPhMax: 7.5,
+    optimalTempMin: 20, optimalTempMax: 35,
+    altitudeMin: 0, altitudeMax: 1600,
+    droughtTolerance: 85,
     seasons: ['LR', 'SR'],
     varieties: [
       { name: 'KAT/PM1', maturityDays: 75, type: 'short', notes: 'Early pearl millet' },
@@ -492,6 +520,10 @@ export const CROPS: CropInfo[] = [
     minRainfall: 200,
     maxRainfall: 700,
     zones: ['Lower Midland', 'Coastal Lowland', 'Upper Midland'],
+    optimalPhMin: 5.5, optimalPhMax: 7.5,
+    optimalTempMin: 20, optimalTempMax: 35,
+    altitudeMin: 0, altitudeMax: 1500,
+    droughtTolerance: 80,
     seasons: ['LR', 'SR'],
     varieties: [
       { name: 'K80', maturityDays: 70, type: 'medium', notes: 'Dual purpose, grain + leaves' },
@@ -524,6 +556,10 @@ export const CROPS: CropInfo[] = [
     minRainfall: 250,
     maxRainfall: 600,
     zones: ['Lower Midland', 'Coastal Lowland'],
+    optimalPhMin: 6.0, optimalPhMax: 7.5,
+    optimalTempMin: 22, optimalTempMax: 35,
+    altitudeMin: 0, altitudeMax: 1500,
+    droughtTolerance: 70,
     seasons: ['LR', 'SR'],
     varieties: [
       { name: 'KS20', maturityDays: 65, type: 'short', notes: 'Early, drought tolerant' },
@@ -555,6 +591,10 @@ export const CROPS: CropInfo[] = [
     minRainfall: 500,
     maxRainfall: 1200,
     zones: ['Highland', 'Upper Midland', 'Lower Midland', 'Coastal Lowland'],
+    optimalPhMin: 5.5, optimalPhMax: 6.5,
+    optimalTempMin: 20, optimalTempMax: 30,
+    altitudeMin: 0, altitudeMax: 2100,
+    droughtTolerance: 50,
     seasons: ['LR', 'SR'],
     varieties: [
       { name: 'KSP20', maturityDays: 110, type: 'medium', notes: 'Orange flesh, high vitamin A' },
@@ -588,6 +628,10 @@ export const CROPS: CropInfo[] = [
     minRainfall: 500,
     maxRainfall: 1200,
     zones: ['Highland', 'Upper Midland'],
+    optimalPhMin: 5.0, optimalPhMax: 6.0,
+    optimalTempMin: 12, optimalTempMax: 24,
+    altitudeMin: 1500, altitudeMax: 3000,
+    droughtTolerance: 25,
     seasons: ['LR', 'SR'],
     varieties: [
       { name: 'Shangi', maturityDays: 90, type: 'medium', notes: 'Popular Kenyan variety, good yield' },
@@ -624,6 +668,10 @@ export const CROPS: CropInfo[] = [
     minRainfall: 400,
     maxRainfall: 1500,
     zones: ['Lower Midland', 'Coastal Lowland', 'Upper Midland'],
+    optimalPhMin: 5.5, optimalPhMax: 7.0,
+    optimalTempMin: 22, optimalTempMax: 35,
+    altitudeMin: 0, altitudeMax: 1500,
+    droughtTolerance: 70,
     seasons: ['LR', 'SR'],
     varieties: [
       { name: 'MH95/0183', maturityDays: 300, type: 'long', notes: 'High yielding, disease resistant' },
@@ -656,6 +704,10 @@ export const CROPS: CropInfo[] = [
     minRainfall: 300,
     maxRainfall: 800,
     zones: ['Lower Midland', 'Upper Midland', 'Coastal Lowland'],
+    optimalPhMin: 5.5, optimalPhMax: 7.0,
+    optimalTempMin: 22, optimalTempMax: 33,
+    altitudeMin: 0, altitudeMax: 1500,
+    droughtTolerance: 55,
     seasons: ['LR', 'SR'],
     varieties: [
       { name: 'Red Valencia', maturityDays: 100, type: 'medium', notes: 'Popular, red seed' },
@@ -689,6 +741,10 @@ export const CROPS: CropInfo[] = [
     minRainfall: 600,
     maxRainfall: 1200,
     zones: ['Highland', 'Upper Midland', 'Lower Midland'],
+    optimalPhMin: 5.5, optimalPhMax: 7.0,
+    optimalTempMin: 18, optimalTempMax: 30,
+    altitudeMin: 500, altitudeMax: 2000,
+    droughtTolerance: 20,
     seasons: ['LR', 'SR'],
     varieties: [
       { name: 'Cal-J', maturityDays: 90, type: 'medium', notes: 'Popular, large fruit' },

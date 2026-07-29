@@ -11,6 +11,7 @@ import {
   analyzePlanting, recommendCrops, calcGrowthStatus,
   generateActivities, recommendPlantingDate, type PlantingDecision, type CropRanking,
 } from '@/lib/recommendations';
+import { generateRecommendations, analyzeSpecificCrop, type CropRecommendation, type DataSources } from '@/lib/recommendationEngine';
 import { fetchWeather } from '@/lib/weather';
 import { detectLocation } from '@/lib/location';
 import { fetchSoilData, soilRecommendationsForCrop, type SoilData, type SoilRecommendation } from '@/lib/soil';
@@ -453,9 +454,53 @@ function PlantingForm({ county, coords, onSaved }: { county: string; coords: { l
     }
   }
 
+  const [liveResult, setLiveResult] = useState<CropRecommendation | null>(null);
+  const [liveSources, setLiveSources] = useState<DataSources | null>(null);
+
   async function analyze() {
     setAnalyzing(true);
     setSaveMsg(null);
+    setLiveResult(null);
+    setLiveSources(null);
+
+    // Use live engine if GPS coordinates are available
+    const lookupLat = coords?.latitude ?? countyInfo?.latitude;
+    const lookupLon = coords?.longitude ?? countyInfo?.longitude;
+
+    if (lookupLat != null && lookupLon != null) {
+      try {
+        const liveAnalysis = await analyzeSpecificCrop({
+          lat: lookupLat,
+          lon: lookupLon,
+          countyName: selectedCounty,
+          plantingDate: dateRec.startDate,
+          crop,
+        });
+        if (liveAnalysis.recommendation) {
+          setLiveResult(liveAnalysis.recommendation);
+          setLiveSources(liveAnalysis.sources);
+          setSoilData(liveAnalysis.soil);
+          // Also build the legacy PlantingDecision for save compatibility
+          const rec = liveAnalysis.recommendation;
+          const decision = analyzePlanting({
+            county: selectedCounty,
+            subCounty,
+            crop,
+            plantingDate: dateRec.startDate,
+            variety: rec.recommendedVariety || variety || undefined,
+            rainfallForecast: liveAnalysis.weather?.daily.slice(0, 14).reduce((s, d) => s + d.precipitation, 0),
+            soil: liveAnalysis.soil,
+          });
+          setResult(decision);
+          setAnalyzing(false);
+          return;
+        }
+      } catch {
+        // Fall through to legacy analysis
+      }
+    }
+
+    // Legacy fallback
     let rainfallForecast: number | undefined;
     let soil: SoilData | undefined;
     if (coords) {
@@ -630,20 +675,22 @@ function PlantingForm({ county, coords, onSaved }: { county: string; coords: { l
       </div>
 
       {result && (
-        <ResultCard decision={result} crop={crop} onSave={saveSeason} saveMsg={saveMsg} soilData={soilData} />
+        <ResultCard decision={result} crop={crop} onSave={saveSeason} saveMsg={saveMsg} soilData={soilData} liveSources={liveSources} liveResult={liveResult} />
       )}
     </div>
   );
 }
 
 function ResultCard({
-  decision, crop, onSave, saveMsg, soilData,
+  decision, crop, onSave, saveMsg, soilData, liveSources, liveResult,
 }: {
   decision: PlantingDecision;
   crop: string;
   onSave: () => void;
   saveMsg: string | null;
   soilData: SoilData | null;
+  liveSources?: DataSources | null;
+  liveResult?: CropRecommendation | null;
 }) {
   const verdictColor =
     decision.verdict === 'Plant Now'
@@ -656,13 +703,58 @@ function ResultCard({
     <div className="bg-surface-container-lowest rounded-2xl p-5 shadow-sm space-y-4">
       <div className="flex items-center justify-between">
         <span className={`px-4 py-1.5 rounded-full text-sm font-bold ${verdictColor}`}>
-          {decision.verdict}
+          {liveResult ? liveResult.verdict : decision.verdict}
         </span>
-        <span className="text-xs text-outline">Confidence {decision.confidence}%</span>
+        <span className="text-xs text-outline">Confidence {liveResult ? liveResult.score : decision.confidence}%</span>
       </div>
 
-      {/* Confidence breakdown */}
-      {decision.confidenceBreakdown && (
+      {/* Data Sources */}
+      {liveSources && (
+        <div className="flex flex-wrap gap-1.5">
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${liveSources.climate === 'live' ? 'bg-primary/10 text-primary' : 'bg-outline/10 text-outline'}`}>
+            {liveSources.climate === 'live' ? '🟢' : '🟡'} Climate
+          </span>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${liveSources.soil === 'live' ? 'bg-primary/10 text-primary' : 'bg-outline/10 text-outline'}`}>
+            {liveSources.soil === 'live' ? '🟢' : '🟡'} Soil (ISRIC)
+          </span>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${liveSources.weather === 'live' ? 'bg-primary/10 text-primary' : 'bg-outline/10 text-outline'}`}>
+            {liveSources.weather === 'live' ? '🟢' : '🟡'} Weather
+          </span>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${liveSources.faoCalendar === 'live' ? 'bg-primary/10 text-primary' : 'bg-outline/10 text-outline'}`}>
+            {liveSources.faoCalendar === 'live' ? '🟢' : '🟡'} FAO Calendar
+          </span>
+        </div>
+      )}
+
+      {/* Enhanced breakdown from live engine */}
+      {liveResult?.breakdown ? (
+        <div className="bg-surface-container-high rounded-xl p-3 space-y-1.5">
+          <p className="text-xs font-semibold text-on-surface mb-1">Multi-Factor Score Breakdown</p>
+          {[
+            { label: 'Rainfall', value: liveResult.breakdown.rainfallScore },
+            { label: 'Soil', value: liveResult.breakdown.soilScore },
+            { label: 'Temperature', value: liveResult.breakdown.temperatureScore },
+            { label: 'Timing', value: liveResult.breakdown.timingScore },
+            { label: 'Zone / Altitude', value: liveResult.breakdown.zoneScore },
+          ].map((item) => (
+            <div key={item.label} className="flex items-center gap-2">
+              <span className="text-xs text-on-surface-variant w-24 shrink-0">{item.label}</span>
+              <div className="flex-1 h-1.5 bg-surface-container-lowest rounded-full overflow-hidden">
+                <div className={`h-full rounded-full ${item.value >= 80 ? 'bg-primary' : item.value >= 50 ? 'bg-tertiary' : 'bg-error'}`} style={{ width: `${item.value}%` }} />
+              </div>
+              <span className="text-xs font-medium text-on-surface w-8 text-right">{item.value}%</span>
+            </div>
+          ))}
+          {liveResult.breakdown.forecastBonus !== 0 && (
+            <div className="flex items-center gap-2 pt-1 border-t border-outline-variant/30">
+              <span className="text-xs text-on-surface-variant w-24 shrink-0">Forecast adj.</span>
+              <span className={`text-xs font-bold ${liveResult.breakdown.forecastBonus > 0 ? 'text-primary' : 'text-error'}`}>
+                {liveResult.breakdown.forecastBonus > 0 ? '+' : ''}{liveResult.breakdown.forecastBonus}
+              </span>
+            </div>
+          )}
+        </div>
+      ) : decision.confidenceBreakdown && (
         <div className="bg-surface-container-high rounded-xl p-3 space-y-1.5">
           <p className="text-xs font-semibold text-on-surface mb-1">Confidence Breakdown</p>
           {[
@@ -694,7 +786,7 @@ function ResultCard({
           <Info size={15} className="text-primary" /> Why this recommendation
         </h4>
         <ul className="space-y-1.5">
-          {decision.explanation.map((e, i) => (
+          {(liveResult?.explanations ?? decision.explanation).map((e, i) => (
             <li key={i} className="text-xs text-on-surface-variant flex gap-2">
               <span className="text-primary shrink-0">•</span> {e}
             </li>

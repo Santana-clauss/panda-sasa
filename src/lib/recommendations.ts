@@ -4,6 +4,16 @@ import type { DailyForecast } from './weather';
 import type { SoilData } from './soil';
 import { getCurrentStage, getGrowthProfile, type CurrentStageResult } from './growthProfiles';
 
+// Re-export the new live-data recommendation engine
+export {
+  generateRecommendations,
+  analyzeSpecificCrop,
+  type CropRecommendation,
+  type RecommendationInput,
+  type RecommendationResult,
+  type DataSources,
+  type ScoreBreakdown,
+} from './recommendationEngine';
 export type PlantingDecision = {
   verdict: 'Plant Now' | 'Wait' | 'Not Recommended';
   plantingWindow: { start: string; end: string; label: string };

@@ -47,19 +47,33 @@ const CROP_SEARCH: Record<string, string> = {
 // Kenya ISO 3166-1 numeric code for FAO API
 const KENYA_CODE = 114;
 
+// Cache FAO results in memory — keyed by crop name (we always query for Kenya)
+const faoCache = new Map<string, CropCalendarEntry | null>();
+
 export async function fetchCropCalendar(cropName: string, _county?: string): Promise<CropCalendarEntry | null> {
   const searchName = CROP_SEARCH[cropName];
   if (!searchName) return null;
 
+  // Check cache
+  if (faoCache.has(cropName)) {
+    return faoCache.get(cropName) ?? null;
+  }
+
   try {
     const url = `${FAO_BASE}/crops?adm0_id=${KENYA_CODE}&crop=${encodeURIComponent(searchName)}`;
     const res = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      faoCache.set(cropName, null);
+      return null;
+    }
     const data: FAOResponse = await res.json();
     const crop = data.crops?.[0];
-    if (!crop) return null;
+    if (!crop) {
+      faoCache.set(cropName, null);
+      return null;
+    }
 
-    return {
+    const entry: CropCalendarEntry = {
       cropName,
       plantingStart: crop.start_date ?? null,
       plantingEnd: crop.end_date ?? null,
@@ -68,7 +82,10 @@ export async function fetchCropCalendar(cropName: string, _county?: string): Pro
       agroEcologicalZone: crop.season ?? null,
       source: 'FAO Crop Calendar',
     };
+    faoCache.set(cropName, entry);
+    return entry;
   } catch {
+    faoCache.set(cropName, null);
     return null;
   }
 }

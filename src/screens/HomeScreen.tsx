@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { supabase, type Season, type Activity } from '@/lib/supabase';
 import { COUNTIES, getCrop, type CropInfo } from '@/lib/data';
 import { recommendCrops, calcGrowthStatus, generateNotifications, type CropRanking } from '@/lib/recommendations';
+import { generateRecommendations, type CropRecommendation, type DataSources } from '@/lib/recommendationEngine';
 import { fetchWeather, weatherToRecommendations } from '@/lib/weather';
 import { detectLocation } from '@/lib/location';
 import { WeatherIcon } from '@/components/ui';
@@ -13,6 +14,9 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
   const { profile, isGuest, detectedCounty, detectedCoords } = useAuth();
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [rankings, setRankings] = useState<CropRanking[]>([]);
+  const [liveRecs, setLiveRecs] = useState<CropRecommendation[]>([]);
+  const [dataSources, setDataSources] = useState<DataSources | null>(null);
+  const [recsLoading, setRecsLoading] = useState(false);
   const [weatherSummary, setWeatherSummary] = useState<string | null>(null);
   const [weatherCode, setWeatherCode] = useState<number | null>(null);
   const [temp, setTemp] = useState<number | null>(null);
@@ -56,9 +60,31 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
     setLocMsg(`Using ${name}`);
   }
 
+  // Immediate fallback rankings from hardcoded data (shown instantly)
   useEffect(() => {
     setRankings(recommendCrops(county));
   }, [county]);
+
+  // Live recommendations from APIs (climate + soil + weather + FAO)
+  useEffect(() => {
+    if (!lookupCoords) return;
+    setRecsLoading(true);
+    generateRecommendations({
+      lat: lookupCoords.latitude,
+      lon: lookupCoords.longitude,
+      countyName: county,
+    })
+      .then((result) => {
+        setLiveRecs(result.recommendations);
+        setDataSources(result.sources);
+      })
+      .catch(() => {
+        // Keep using fallback rankings
+        setLiveRecs([]);
+        setDataSources(null);
+      })
+      .finally(() => setRecsLoading(false));
+  }, [lookupCoords, county]);
 
   useEffect(() => {
     if (isGuest) {
@@ -333,15 +359,49 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-bold text-on-surface">Top Recommended Crops</h2>
-              <p className="text-xs text-outline">Tailored for {county} soil & rainfall profile</p>
+              <p className="text-xs text-outline">
+                {liveRecs.length > 0
+                  ? `Live analysis for ${county} — soil, climate & weather data`
+                  : `Tailored for ${county} soil & rainfall profile`}
+              </p>
+              {dataSources && (
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${dataSources.climate === 'live' ? 'bg-primary/10 text-primary' : 'bg-outline/10 text-outline'}`}>
+                    {dataSources.climate === 'live' ? '🟢' : '🟡'} Climate
+                  </span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${dataSources.soil === 'live' ? 'bg-primary/10 text-primary' : 'bg-outline/10 text-outline'}`}>
+                    {dataSources.soil === 'live' ? '🟢' : '🟡'} Soil
+                  </span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${dataSources.weather === 'live' ? 'bg-primary/10 text-primary' : 'bg-outline/10 text-outline'}`}>
+                    {dataSources.weather === 'live' ? '🟢' : '🟡'} Weather
+                  </span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${dataSources.faoCalendar === 'live' ? 'bg-primary/10 text-primary' : 'bg-outline/10 text-outline'}`}>
+                    {dataSources.faoCalendar === 'live' ? '🟢' : '🟡'} FAO
+                  </span>
+                </div>
+              )}
             </div>
-            <TrendingUp size={20} className="text-primary" />
+            {recsLoading ? <Loader2 size={20} className="text-primary animate-spin" /> : <TrendingUp size={20} className="text-primary" />}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {rankings.slice(0, 4).map((r) => (
-              <CropCard key={r.crop.name} ranking={r} onClick={() => onNavigate('advisor')} />
-            ))}
-          </div>
+          {recsLoading && liveRecs.length === 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {rankings.slice(0, 4).map((r) => (
+                <CropCard key={r.crop.name} ranking={r} onClick={() => onNavigate('advisor')} />
+              ))}
+            </div>
+          ) : liveRecs.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {liveRecs.slice(0, 4).map((r) => (
+                <LiveCropCard key={r.crop.name} rec={r} onClick={() => onNavigate('advisor')} />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {rankings.slice(0, 4).map((r) => (
+                <CropCard key={r.crop.name} ranking={r} onClick={() => onNavigate('advisor')} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -364,6 +424,34 @@ function CropCard({ ranking, onClick }: { ranking: CropRanking; onClick: () => v
         <p className="text-xs text-on-surface-variant line-clamp-1 mt-0.5">{reasons[0]}</p>
         <div className="h-1.5 bg-surface-container-high rounded-full mt-2 overflow-hidden">
           <div className="h-full bg-primary rounded-full" style={{ width: `${score}%` }} />
+        </div>
+      </div>
+      <ChevronRight size={18} className="text-outline group-hover:text-primary transition-colors" />
+    </button>
+  );
+}
+
+function LiveCropCard({ rec, onClick }: { rec: CropRecommendation; onClick: () => void }) {
+  const { crop, score, verdict, breakdown, explanations } = rec;
+  const verdictColor = verdict === 'Highly Recommended' ? 'text-primary' : verdict === 'Recommended' ? 'text-tertiary' : verdict === 'Marginal' ? 'text-outline' : 'text-error';
+  return (
+    <button
+      onClick={onClick}
+      className="w-full bg-surface-container-low/60 rounded-2xl p-4 border border-outline-variant/30 flex items-center gap-4 text-left hover:bg-surface-container-high hover:border-primary/40 transition-all group"
+    >
+      <span className="text-3xl p-2 rounded-2xl bg-surface-container-lowest shadow-xs group-hover:scale-105 transition-transform">{crop.emoji}</span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between">
+          <p className="font-bold text-on-surface">{crop.name}</p>
+          <span className="text-xs font-extrabold text-primary px-2 py-0.5 rounded-full bg-primary/10">{score}%</span>
+        </div>
+        <p className={`text-[11px] font-semibold mt-0.5 ${verdictColor}`}>{verdict}</p>
+        <p className="text-xs text-on-surface-variant line-clamp-1 mt-0.5">{explanations[0]}</p>
+        <div className="h-1.5 bg-surface-container-high rounded-full mt-2 overflow-hidden">
+          <div
+            className={`h-full rounded-full ${score >= 70 ? 'bg-primary' : score >= 50 ? 'bg-tertiary' : 'bg-error'}`}
+            style={{ width: `${score}%` }}
+          />
         </div>
       </div>
       <ChevronRight size={18} className="text-outline group-hover:text-primary transition-colors" />
