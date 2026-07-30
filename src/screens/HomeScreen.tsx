@@ -3,7 +3,7 @@ import { Sprout, Bell, ChevronRight, MapPin, TrendingUp, Clock, CloudSun, AlertT
 import { useAuth } from '@/context/AuthContext';
 import { supabase, type Season, type Activity } from '@/lib/supabase';
 import { COUNTIES, getCrop, type CropInfo } from '@/lib/data';
-import { recommendCrops, calcGrowthStatus, generateNotifications, type CropRanking } from '@/lib/recommendations';
+import { calcGrowthStatus, generateNotifications } from '@/lib/recommendations';
 import { generateRecommendations, type CropRecommendation, type DataSources } from '@/lib/recommendationEngine';
 import { fetchWeather, weatherToRecommendations } from '@/lib/weather';
 import { detectLocation } from '@/lib/location';
@@ -13,7 +13,6 @@ import type { TabKey } from '@/components/BottomNav';
 export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => void }) {
   const { profile, isGuest, detectedCounty, detectedCoords } = useAuth();
   const [seasons, setSeasons] = useState<Season[]>([]);
-  const [rankings, setRankings] = useState<CropRanking[]>([]);
   const [liveRecs, setLiveRecs] = useState<CropRecommendation[]>([]);
   const [dataSources, setDataSources] = useState<DataSources | null>(null);
   const [recsLoading, setRecsLoading] = useState(false);
@@ -60,11 +59,6 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
     setLocMsg(`Using ${name}`);
   }
 
-  // Immediate fallback rankings from hardcoded data (shown instantly)
-  useEffect(() => {
-    setRankings(recommendCrops(county));
-  }, [county]);
-
   // Live recommendations from APIs (climate + soil + weather + FAO)
   useEffect(() => {
     if (!lookupCoords) return;
@@ -79,7 +73,6 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
         setDataSources(result.sources);
       })
       .catch(() => {
-        // Keep using fallback rankings
         setLiveRecs([]);
         setDataSources(null);
       })
@@ -224,10 +217,10 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
             </p>
           </div>
           <button
-            onClick={() => onNavigate('weather')}
+            onClick={() => onNavigate('advisor')}
             className="w-full mt-2 py-3 px-4 rounded-2xl bg-surface-container-high hover:bg-primary hover:text-on-primary transition-all text-sm font-semibold flex items-center justify-between text-on-surface"
           >
-            <span>View Detailed Weather Advisor</span>
+            <span>View Planting Advisor</span>
             <ChevronRight size={18} />
           </button>
         </div>
@@ -385,8 +378,14 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
           </div>
           {recsLoading && liveRecs.length === 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {rankings.slice(0, 4).map((r) => (
-                <CropCard key={r.crop.name} ranking={r} onClick={() => onNavigate('advisor')} />
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="animate-pulse bg-surface-container-low/60 rounded-2xl p-4 border border-outline-variant/30 h-24 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-surface-container-high" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 bg-surface-container-high rounded w-3/4" />
+                    <div className="h-3 bg-surface-container-high rounded w-1/2" />
+                  </div>
+                </div>
               ))}
             </div>
           ) : liveRecs.length > 0 ? (
@@ -396,10 +395,8 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {rankings.slice(0, 4).map((r) => (
-                <CropCard key={r.crop.name} ranking={r} onClick={() => onNavigate('advisor')} />
-              ))}
+            <div className="text-center py-6 text-on-surface-variant text-sm">
+              <p>Live recommendations loading from API…</p>
             </div>
           )}
         </div>
@@ -408,31 +405,8 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
   );
 }
 
-function CropCard({ ranking, onClick }: { ranking: CropRanking; onClick: () => void }) {
-  const { crop, score, reasons } = ranking;
-  return (
-    <button
-      onClick={onClick}
-      className="w-full bg-surface-container-low/60 rounded-2xl p-4 border border-outline-variant/30 flex items-center gap-4 text-left hover:bg-surface-container-high hover:border-primary/40 transition-all group"
-    >
-      <span className="text-3xl p-2 rounded-2xl bg-surface-container-lowest shadow-xs group-hover:scale-105 transition-transform">{crop.emoji}</span>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between">
-          <p className="font-bold text-on-surface">{crop.name}</p>
-          <span className="text-xs font-extrabold text-primary px-2 py-0.5 rounded-full bg-primary/10">{score}%</span>
-        </div>
-        <p className="text-xs text-on-surface-variant line-clamp-1 mt-0.5">{reasons[0]}</p>
-        <div className="h-1.5 bg-surface-container-high rounded-full mt-2 overflow-hidden">
-          <div className="h-full bg-primary rounded-full" style={{ width: `${score}%` }} />
-        </div>
-      </div>
-      <ChevronRight size={18} className="text-outline group-hover:text-primary transition-colors" />
-    </button>
-  );
-}
-
 function LiveCropCard({ rec, onClick }: { rec: CropRecommendation; onClick: () => void }) {
-  const { crop, score, verdict, breakdown, explanations } = rec;
+  const { crop, score, verdict, explanations } = rec;
   const verdictColor = verdict === 'Highly Recommended' ? 'text-primary' : verdict === 'Recommended' ? 'text-tertiary' : verdict === 'Marginal' ? 'text-outline' : 'text-error';
   return (
     <button

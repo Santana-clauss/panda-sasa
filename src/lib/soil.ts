@@ -232,22 +232,10 @@ const COUNTY_SOIL: Record<string, CountySoilProfile> = {
 // Every county in our lookup table returns a distinct profile. If the county
 // is not found, we return a neutral Loam clearly labeled as a general estimate
 // — never a generic "highland typical" constant.
-export function fallbackSoil(lat: number, lon: number, county?: string): SoilData {
-  if (county && COUNTY_SOIL[county]) {
-    return { ...COUNTY_SOIL[county] };
-  }
-  return {
-    soilType: 'Loam', ph: 6.2, organicCarbon: 12, nitrogen: 8, phosphorus: 6, potassium: 0.3,
-    waterHoldingCapacity: 100, drainage: 'Well drained', clayContent: 25, sandContent: 45, siltContent: 30,
-    bulkDensity: 1.4, cationExchangeCapacity: 12,
-    source: 'Estimated from county-level soil survey data (general)',
-  };
-}
-
-export async function fetchSoilData(lat: number, lon: number, county?: string): Promise<SoilData> {
+export async function fetchSoilData(lat: number, lon: number): Promise<SoilData | null> {
   const data = await fetchSoilGrids(lat, lon);
   if (!data || !data.properties || data.properties.length === 0) {
-    return fallbackSoil(lat, lon, county);
+    return null;
   }
 
   const props = data.properties;

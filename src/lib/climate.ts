@@ -7,6 +7,7 @@
 // rainy-season pattern (long rains Mar-Jun, short rains Oct-Dec).
 
 import { type County, getCounty } from './data';
+import { fetchWithTimeout, getSessionCache, setSessionCache } from './fetchUtils';
 
 export type ClimateStats = {
   annualRainfallMm: number;
@@ -203,19 +204,26 @@ function computeAvgTemps(times: string[], maxTemps: number[], minTemps: number[]
 
 /**
  * Fetch climate statistics for a given location.
- * Results are cached in memory by rounded lat/lon.
- * Falls back to hardcoded county data if the API call fails.
+ * Results are cached in memory by rounded lat/lon and in session cache.
+ * Returns null if the API is unreachable and no cached data exists.
  */
-export async function fetchClimateStats(lat: number, lon: number, countyName?: string): Promise<ClimateStats> {
+export async function fetchClimateStats(lat: number, lon: number): Promise<ClimateStats | null> {
   const key = cacheKey(lat, lon);
+
   const cached = cache.get(key);
   if (cached) return cached;
+
+  const sessionKey = `climate_${key}`;
+  const sessionCached = getSessionCache<ClimateStats>(sessionKey);
+  if (sessionCached) {
+    cache.set(key, sessionCached);
+    return sessionCached;
+  }
 
   const archive = await fetchClimateArchive(lat, lon);
 
   if (!archive) {
-    // Fallback to hardcoded county data
-    return getCountyFallbackClimate(countyName);
+    return null;
   }
 
   const { daily, elevation } = archive;
@@ -237,63 +245,11 @@ export async function fetchClimateStats(lat: number, lon: number, countyName?: s
   };
 
   cache.set(key, stats);
+  setSessionCache(sessionKey, stats);
   return stats;
 }
 
 /**
- * Build a ClimateStats object from the hardcoded county data.
- * Used as a fallback when the Climate API is unavailable.
- */
-export function getCountyFallbackClimate(countyName?: string): ClimateStats {
-  const MONTH_TO_NUM: Record<string, number> = {
-    Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
-    Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
-  };
-
-  const county: County | undefined = countyName ? getCounty(countyName) : undefined;
-  if (!county) {
-    return {
-      annualRainfallMm: 900,
-      rainfallZone: 'Medium',
-      monthlyRainfall: [50, 60, 100, 150, 120, 50, 30, 30, 40, 80, 100, 90],
-      avgTempMin: 14,
-      avgTempMax: 26,
-      longRainsStart: 'Mar',
-      longRainsEnd: 'May',
-      shortRainsStart: 'Oct',
-      shortRainsEnd: 'Dec',
-      elevation: null,
-      source: 'Hardcoded Fallback',
-    };
-  }
-
-  // Synthesize monthly rainfall from the county's annual total and known season windows
-  // Distribute ~60% to long rains, ~30% to short rains, ~10% dry months
-  const lrStart = MONTH_TO_NUM[county.longRainsStart] ?? 2;
-  const lrEnd = MONTH_TO_NUM[county.longRainsEnd] ?? 4;
-  const srStart = MONTH_TO_NUM[county.shortRainsStart] ?? 9;
-  const srEnd = MONTH_TO_NUM[county.shortRainsEnd] ?? 11;
-
-  const lrMonths = lrEnd - lrStart + 1;
-  const srMonths = srEnd - srStart + 1;
-  const dryMonths = 12 - lrMonths - srMonths;
-
-  const lrShare = county.annualRainfallMm * 0.6;
-  const srShare = county.annualRainfallMm * 0.3;
-  const dryShare = county.annualRainfallMm * 0.1;
-
-  const monthly = new Array(12).fill(0);
-  for (let m = 0; m < 12; m++) {
-    if (m >= lrStart && m <= lrEnd) {
-      monthly[m] = Math.round(lrShare / lrMonths);
-    } else if (m >= srStart && m <= srEnd) {
-      monthly[m] = Math.round(srShare / srMonths);
-    } else if (dryMonths > 0) {
-      monthly[m] = Math.round(dryShare / dryMonths);
-    }
-  }
-
-  return {
     annualRainfallMm: county.annualRainfallMm,
     rainfallZone: county.rainfallZone,
     monthlyRainfall: monthly,

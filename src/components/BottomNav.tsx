@@ -1,11 +1,11 @@
-import { Home, Sprout, CloudRain, MapPin, User } from 'lucide-react';
+import { Home, Sprout, ShoppingBag, MapPin, User } from 'lucide-react';
 
-export type TabKey = 'home' | 'advisor' | 'weather' | 'map' | 'profile';
+export type TabKey = 'home' | 'advisor' | 'market' | 'map' | 'profile';
 
 const tabs: { key: TabKey; label: string; icon: typeof Home; description: string }[] = [
   { key: 'home', label: 'Home', icon: Home, description: 'Dashboard & Tasks' },
   { key: 'advisor', label: 'Advisor', icon: Sprout, description: 'Planting Recommendations' },
-  { key: 'weather', label: 'Weather', icon: CloudRain, description: 'Forecast & Rainfall' },
+  { key: 'market', label: 'Market', icon: ShoppingBag, description: 'Opportunity Signals' },
   { key: 'map', label: 'Zones', icon: MapPin, description: 'Agro-Ecological Map' },
   { key: 'profile', label: 'Profile', icon: User, description: 'Settings & Seasons' },
 ];

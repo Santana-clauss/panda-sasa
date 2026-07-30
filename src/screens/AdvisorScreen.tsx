@@ -15,11 +15,20 @@ import { generateRecommendations, analyzeSpecificCrop, type CropRecommendation, 
 import { fetchWeather } from '@/lib/weather';
 import { detectLocation } from '@/lib/location';
 import { fetchSoilData, soilRecommendationsForCrop, type SoilData, type SoilRecommendation } from '@/lib/soil';
+import { type TerrainData } from '@/lib/terrain';
 
 function fmtDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+export function getScoreRating(val: number): { label: 'Best' | 'Good' | 'Okay' | 'Bad' | 'Worst'; badgeClass: string } {
+  if (val >= 85) return { label: 'Best', badgeClass: 'bg-primary/10 text-primary border border-primary/20' };
+  if (val >= 70) return { label: 'Good', badgeClass: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20' };
+  if (val >= 55) return { label: 'Okay', badgeClass: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20' };
+  if (val >= 40) return { label: 'Bad', badgeClass: 'bg-orange-500/10 text-orange-700 dark:text-orange-400 border border-orange-500/20' };
+  return { label: 'Worst', badgeClass: 'bg-error/10 text-error border border-error/20' };
 }
 
 type View = 'guidance' | 'plan' | 'crops' | 'seasons';
@@ -157,7 +166,7 @@ function GuidanceTimeline({ seasons, onUpdated, coords }: { seasons: Season[]; o
   // Fetch soil data using exact GPS coordinates when available
   useEffect(() => {
     if (!season || !coords) return;
-    fetchSoilData(coords.latitude, coords.longitude, season.county).then(setSoilData).catch(() => {});
+    fetchSoilData(coords.latitude, coords.longitude).then((s) => s && setSoilData(s)).catch(() => {});
   }, [season?.id, coords]);
 
   async function toggleActivity(act: Activity) {
@@ -432,7 +441,9 @@ function PlantingForm({ county, coords, onSaved }: { county: string; coords: { l
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [locMsg, setLocMsg] = useState<string | null>(null);
+  const [detectedAez, setDetectedAez] = useState<string | null>(null);
   const [soilData, setSoilData] = useState<SoilData | null>(null);
+  const [terrainData, setTerrainData] = useState<TerrainData | null>(null);
   const [soilLoading, setSoilLoading] = useState(false);
 
   const countyInfo = useMemo(() => COUNTIES.find((c) => c.name === selectedCounty), [selectedCounty]);
@@ -446,7 +457,21 @@ function PlantingForm({ county, coords, onSaved }: { county: string; coords: { l
     try {
       const loc = await detectLocation();
       setSelectedCounty(loc.county.name);
-      setLocMsg(`Located: ${loc.county.name} (±${Math.round(loc.accuracyMeters ?? 0)}m)`);
+
+      let matchedSub = '';
+      if (loc.county.subCounties && loc.county.subCounties.length > 0) {
+        const candidates = [loc.subCounty, loc.ward, loc.village, loc.displayName].filter(Boolean) as string[];
+        const found = loc.county.subCounties.find((sc) =>
+          candidates.some((c) => c.toLowerCase().includes(sc.toLowerCase()) || sc.toLowerCase().includes(c.toLowerCase()))
+        );
+        matchedSub = found ?? loc.county.subCounties[0];
+      } else if (loc.subCounty) {
+        matchedSub = loc.subCounty;
+      }
+
+      setSubCounty(matchedSub);
+      setDetectedAez(loc.county.agroEcologicalZone);
+      setLocMsg(`Located: ${loc.county.name}${matchedSub ? `, ${matchedSub}` : ''} (±${Math.round(loc.accuracyMeters ?? 0)}m)`);
     } catch (e) {
       setLocMsg(e instanceof Error ? e.message : 'Could not detect location.');
     } finally {
@@ -473,6 +498,7 @@ function PlantingForm({ county, coords, onSaved }: { county: string; coords: { l
           lat: lookupLat,
           lon: lookupLon,
           countyName: selectedCounty,
+          agroEcologicalZone: detectedAez ?? undefined,
           plantingDate: dateRec.startDate,
           crop,
         });
@@ -480,6 +506,7 @@ function PlantingForm({ county, coords, onSaved }: { county: string; coords: { l
           setLiveResult(liveAnalysis.recommendation);
           setLiveSources(liveAnalysis.sources);
           setSoilData(liveAnalysis.soil);
+          setTerrainData(liveAnalysis.terrain);
           // Also build the legacy PlantingDecision for save compatibility
           const rec = liveAnalysis.recommendation;
           const decision = analyzePlanting({
@@ -487,9 +514,9 @@ function PlantingForm({ county, coords, onSaved }: { county: string; coords: { l
             subCounty,
             crop,
             plantingDate: dateRec.startDate,
-            variety: rec.recommendedVariety || variety || undefined,
+            variety: rec?.recommendedVariety || variety || undefined,
             rainfallForecast: liveAnalysis.weather?.daily.slice(0, 14).reduce((s, d) => s + d.precipitation, 0),
-            soil: liveAnalysis.soil,
+            soil: liveAnalysis.soil ?? undefined,
           });
           setResult(decision);
           setAnalyzing(false);
@@ -507,11 +534,11 @@ function PlantingForm({ county, coords, onSaved }: { county: string; coords: { l
       try {
         const [w, s] = await Promise.all([
           fetchWeather(coords.latitude, coords.longitude),
-          fetchSoilData(coords.latitude, coords.longitude, county),
+          fetchSoilData(coords.latitude, coords.longitude),
         ]);
         rainfallForecast = w.daily.slice(0, 14).reduce((sum, d) => sum + d.precipitation, 0);
-        soil = s;
-        setSoilData(s);
+        soil = s ?? undefined;
+        if (s) setSoilData(s);
       } catch {
         // ignore fetch failure
       }
@@ -609,16 +636,49 @@ function PlantingForm({ county, coords, onSaved }: { county: string; coords: { l
         </h3>
 
         <div>
-          <SelectField icon={MapPin} label="County" value={selectedCounty} onChange={setSelectedCounty} options={COUNTIES.map((c) => c.name)} />
+            <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2 block">County</label>
+            <div className="relative">
+              <select
+                value={selectedCounty}
+                onChange={(e) => {
+                  setSelectedCounty(e.target.value);
+                  setSubCounty('');
+                  setDetectedAez(null);
+                }}
+                className="w-full appearance-none bg-surface-container rounded-2xl px-4 py-3.5 pr-10 text-on-surface font-medium border border-outline-variant/30 focus:border-primary focus:outline-none transition-colors"
+              >
+                {COUNTIES.map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name} ({c.region})
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-outline pointer-events-none" size={18} />
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center gap-3">
           <button
+            type="button"
             onClick={useMyLocation}
             disabled={locating}
-            className="mt-2 flex items-center gap-1.5 text-sm text-primary font-medium hover:text-primary-container disabled:opacity-60"
+            className="w-full sm:w-auto bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-medium py-2.5 px-4 rounded-xl text-sm transition-colors border border-outline-variant/30 flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            {locating ? <Loader2 size={15} className="animate-spin" /> : <LocateFixed size={15} />}
-            {locating ? 'Detecting…' : 'Use my current location'}
+            {locating ? <Loader2 size={16} className="animate-spin text-primary" /> : <LocateFixed size={16} className="text-primary" />}
+            Use my GPS location
           </button>
-          {locMsg && <p className="text-xs text-outline mt-1.5">{locMsg}</p>}
+          <div className="flex flex-col sm:flex-row items-center gap-2 w-full">
+            {locMsg && (
+              <p className={`text-[11px] font-medium ${locMsg.includes('Could not') ? 'text-error' : 'text-primary'}`}>
+                {locMsg}
+              </p>
+            )}
+            {detectedAez && (
+              <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
+                <Mountain size={10} />
+                Detected AEZ: {detectedAez}
+              </span>
+            )}
+          </div>
         </div>
         {countyInfo && (
           <SelectField
@@ -644,51 +704,53 @@ function PlantingForm({ county, coords, onSaved }: { county: string; coords: { l
           />
         )}
 
-        {/* Recommended planting window */}
-        <div>
-          <label className="text-xs font-medium text-on-surface-variant mb-1.5 block">Recommended Planting Window</label>
-          <div className="bg-primary-container/15 rounded-xl px-4 py-3.5 border border-primary/20">
-            <div className="flex items-center gap-3 mb-2">
-              <Calendar size={18} className="text-primary shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-on-surface">
-                  {new Date(dateRec.startDate).toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' })}
-                  {' – '}
-                  {new Date(dateRec.endDate).toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' })}
-                </p>
-              </div>
-              <span className="text-xs font-bold text-primary bg-primary-container/20 px-2 py-1 rounded-full shrink-0">
-                {dateRec.season === 'LR' ? 'Long Rains' : 'Short Rains'}
-              </span>
-            </div>
-            <p className="text-xs text-on-surface-variant">{dateRec.reason}</p>
-          </div>
-        </div>
-
         <button
           onClick={analyze}
           disabled={analyzing}
-          className="w-full bg-primary text-on-primary font-semibold py-3 rounded-full hover:bg-primary-container transition-colors disabled:opacity-60"
+          className="w-full bg-primary text-on-primary font-semibold py-3 rounded-full hover:bg-primary-container transition-colors disabled:opacity-60 flex items-center justify-center gap-2 shadow-sm"
         >
-          {analyzing ? 'Analyzing rainfall & calendar…' : 'Analyze & Recommend'}
+          {analyzing ? (
+            <>
+              <Loader2 size={18} className="animate-spin" />
+              <span>Analyzing rainfall & calendar…</span>
+            </>
+          ) : (
+            'Analyze & Recommend'
+          )}
         </button>
       </div>
 
-      {result && (
-        <ResultCard decision={result} crop={crop} onSave={saveSeason} saveMsg={saveMsg} soilData={soilData} liveSources={liveSources} liveResult={liveResult} />
+      {analyzing && (
+        <div className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-primary/20 flex flex-col items-center justify-center space-y-3 text-center transition-all animate-pulse">
+          <div className="relative flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+            <Sprout size={20} className="absolute text-primary" />
+          </div>
+          <div>
+            <h4 className="font-semibold text-on-surface text-sm">Processing Recommendation</h4>
+            <p className="text-xs text-on-surface-variant mt-1">
+              Analyzing satellite weather, soil properties & seasonal calendar for <span className="font-semibold text-on-surface">{selectedCounty}</span>…
+            </p>
+          </div>
+        </div>
+      )}
+
+      {result && !analyzing && (
+        <ResultCard decision={result} crop={crop} onSave={saveSeason} saveMsg={saveMsg} soilData={soilData} terrainData={terrainData} liveSources={liveSources} liveResult={liveResult} />
       )}
     </div>
   );
 }
 
 function ResultCard({
-  decision, crop, onSave, saveMsg, soilData, liveSources, liveResult,
+  decision, crop, onSave, saveMsg, soilData, terrainData, liveSources, liveResult,
 }: {
   decision: PlantingDecision;
   crop: string;
   onSave: () => void;
   saveMsg: string | null;
   soilData: SoilData | null;
+  terrainData: TerrainData | null;
   liveSources?: DataSources | null;
   liveResult?: CropRecommendation | null;
 }) {
@@ -726,59 +788,90 @@ function ResultCard({
         </div>
       )}
 
-      {/* Enhanced breakdown from live engine */}
+      {/* Simplified rating breakdown from live engine */}
       {liveResult?.breakdown ? (
-        <div className="bg-surface-container-high rounded-xl p-3 space-y-1.5">
-          <p className="text-xs font-semibold text-on-surface mb-1">Multi-Factor Score Breakdown</p>
-          {[
-            { label: 'Rainfall', value: liveResult.breakdown.rainfallScore },
-            { label: 'Soil', value: liveResult.breakdown.soilScore },
-            { label: 'Temperature', value: liveResult.breakdown.temperatureScore },
-            { label: 'Timing', value: liveResult.breakdown.timingScore },
-            { label: 'Zone / Altitude', value: liveResult.breakdown.zoneScore },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center gap-2">
-              <span className="text-xs text-on-surface-variant w-24 shrink-0">{item.label}</span>
-              <div className="flex-1 h-1.5 bg-surface-container-lowest rounded-full overflow-hidden">
-                <div className={`h-full rounded-full ${item.value >= 80 ? 'bg-primary' : item.value >= 50 ? 'bg-tertiary' : 'bg-error'}`} style={{ width: `${item.value}%` }} />
-              </div>
-              <span className="text-xs font-medium text-on-surface w-8 text-right">{item.value}%</span>
-            </div>
-          ))}
+        <div className="bg-surface-container-high rounded-xl p-3.5 space-y-2 border border-outline-variant/30">
+          <p className="text-xs font-bold text-on-surface mb-2">Multi-Factor Suitability Rating</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {[
+              { label: 'Rainfall', value: liveResult.breakdown.rainfallScore },
+              { label: 'Soil', value: liveResult.breakdown.soilScore },
+              { label: 'Temperature', value: liveResult.breakdown.temperatureScore },
+              { label: 'Timing', value: liveResult.breakdown.timingScore },
+              { label: 'Zone / Altitude', value: liveResult.breakdown.zoneScore },
+            ].map((item) => {
+              const rating = getScoreRating(item.value);
+              return (
+                <div key={item.label} className="bg-surface-container-lowest rounded-xl p-2.5 flex items-center justify-between border border-outline-variant/20">
+                  <span className="text-xs font-medium text-on-surface-variant">{item.label}</span>
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${rating.badgeClass}`}>
+                    {rating.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
           {liveResult.breakdown.forecastBonus !== 0 && (
-            <div className="flex items-center gap-2 pt-1 border-t border-outline-variant/30">
-              <span className="text-xs text-on-surface-variant w-24 shrink-0">Forecast adj.</span>
-              <span className={`text-xs font-bold ${liveResult.breakdown.forecastBonus > 0 ? 'text-primary' : 'text-error'}`}>
-                {liveResult.breakdown.forecastBonus > 0 ? '+' : ''}{liveResult.breakdown.forecastBonus}
+            <div className="flex items-center justify-between pt-2 border-t border-outline-variant/30 text-xs">
+              <span className="text-on-surface-variant font-medium">Weather Forecast</span>
+              <span className={`font-bold ${liveResult.breakdown.forecastBonus > 0 ? 'text-primary' : 'text-error'}`}>
+                {liveResult.breakdown.forecastBonus > 0 ? '+ Favorable Rains' : '- Unfavorable Rains'}
               </span>
             </div>
           )}
         </div>
       ) : decision.confidenceBreakdown && (
-        <div className="bg-surface-container-high rounded-xl p-3 space-y-1.5">
-          <p className="text-xs font-semibold text-on-surface mb-1">Confidence Breakdown</p>
-          {[
-            { label: 'Rainfall fit', value: decision.confidenceBreakdown.rainfallFit },
-            { label: 'Soil fit', value: decision.confidenceBreakdown.soilFit },
-            { label: 'Timing fit', value: decision.confidenceBreakdown.timingFit },
-            { label: 'Zone fit', value: decision.confidenceBreakdown.zoneFit },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center gap-2">
-              <span className="text-xs text-on-surface-variant w-20 shrink-0">{item.label}</span>
-              <div className="flex-1 h-1.5 bg-surface-container-lowest rounded-full overflow-hidden">
-                <div className={`h-full rounded-full ${item.value >= 80 ? 'bg-primary' : item.value >= 50 ? 'bg-tertiary' : 'bg-error'}`} style={{ width: `${item.value}%` }} />
-              </div>
-              <span className="text-xs font-medium text-on-surface w-8 text-right">{item.value}%</span>
-            </div>
-          ))}
+        <div className="bg-surface-container-high rounded-xl p-3.5 space-y-2 border border-outline-variant/30">
+          <p className="text-xs font-bold text-on-surface mb-2">Suitability Rating</p>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: 'Rainfall', value: decision.confidenceBreakdown.rainfallFit },
+              { label: 'Soil', value: decision.confidenceBreakdown.soilFit },
+              { label: 'Timing', value: decision.confidenceBreakdown.timingFit },
+              { label: 'Zone', value: decision.confidenceBreakdown.zoneFit },
+            ].map((item) => {
+              const rating = getScoreRating(item.value);
+              return (
+                <div key={item.label} className="bg-surface-container-lowest rounded-xl p-2.5 flex items-center justify-between border border-outline-variant/20">
+                  <span className="text-xs font-medium text-on-surface-variant">{item.label}</span>
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${rating.badgeClass}`}>
+                    {rating.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
+      {/* Recommended Planting Window Banner (shown after clicking Analyze & Recommend) */}
+      <div className="bg-primary-container/15 rounded-2xl p-4 border border-primary/20 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Calendar size={20} className="text-primary" />
+            <span className="text-xs font-bold uppercase tracking-wider text-primary">Recommended Planting Window</span>
+          </div>
+          <span className="text-xs font-bold text-primary bg-primary-container/30 px-2.5 py-1 rounded-full shrink-0">
+            {liveResult?.plantingWindow?.label ? (liveResult.plantingWindow.label.includes('Long Rains') ? 'Long Rains' : 'Short Rains') : decision.plantingWindow.label}
+          </span>
+        </div>
+        <p className="text-base font-bold text-on-surface">
+          {liveResult?.plantingWindow
+            ? `${new Date(liveResult.plantingWindow.start).toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' })} – ${new Date(liveResult.plantingWindow.end).toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' })}`
+            : decision.plantingWindow.label}
+        </p>
+        <p className="text-xs text-on-surface-variant leading-relaxed">
+          {liveResult
+            ? `Optimal 2-week window derived from live local rainfall and current season timing.`
+            : 'Recommended window for optimal crop establishment.'}
+        </p>
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
-        <InfoTile icon={Calendar} label="Planting Window" value={decision.plantingWindow.label} />
-        <InfoTile icon={Sprout} label="Recommended Variety" value={decision.recommendedVariety || '—'} />
-        <InfoTile icon={Clock} label="Harvest Date" value={decision.estimatedHarvestDate || '—'} />
-        <InfoTile icon={TrendingUp} label="Days to Harvest" value={decision.daysToHarvest > 0 ? `${decision.daysToHarvest} days` : 'Ready'} />
+        <InfoTile icon={Sprout} label="Recommended Variety" value={liveResult ? liveResult.recommendedVariety || '—' : decision.recommendedVariety || '—'} />
+        <InfoTile icon={Clock} label="Estimated Harvest" value={liveResult ? liveResult.estimatedHarvestDate || '—' : decision.estimatedHarvestDate || '—'} />
+        <InfoTile icon={TrendingUp} label="Maturity Period" value={liveResult ? `${liveResult.varietyMaturityDays} days` : decision.daysToHarvest > 0 ? `${decision.daysToHarvest} days` : 'Ready'} />
+        <InfoTile icon={Calendar} label="Season Window" value={liveResult?.plantingWindow?.label || decision.plantingWindow.label} />
       </div>
 
       <div>
@@ -794,8 +887,11 @@ function ResultCard({
         </ul>
       </div>
 
-      {/* Soil analysis from ISRIC SoilGrids */}
-      {soilData && <SoilCard soil={soilData} crop={crop} />}
+      {/* Secondary Cards: Soil & Terrain */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {soilData && <SoilCard soil={soilData} crop={crop} />}
+        {terrainData && <TerrainCard terrain={terrainData} />}
+      </div>
 
       <button
         onClick={onSave}
@@ -908,40 +1004,65 @@ function InfoTile({ icon: Icon, label, value }: { icon: typeof Calendar; label: 
 /* ---------- Crop Picks ---------- */
 
 function CropPicks({ county }: { county: string }) {
-  const rankings = useMemo(() => recommendCrops(county), [county]);
+  const [recs, setRecs] = useState<CropRecommendation[]>([]);
+  const [loading, setLoading] = useState(true);
   const [openCrop, setOpenCrop] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    const c = COUNTIES.find((item) => item.name === county);
+    const lat = c?.latitude ?? -0.3031;
+    const lon = c?.longitude ?? 36.0800;
+
+    generateRecommendations({ lat, lon, countyName: county })
+      .then((res) => setRecs(res.recommendations))
+      .catch(() => setRecs([]))
+      .finally(() => setLoading(false));
+  }, [county]);
+
+  if (loading && recs.length === 0) {
+    return (
+      <div className="py-8 flex flex-col items-center justify-center space-y-3">
+        <Loader2 size={24} className="text-primary animate-spin" />
+        <p className="text-xs text-on-surface-variant">Analyzing soil, climate & weather data for {county}…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
       <p className="text-sm text-on-surface-variant">
-        Top crops for <span className="font-semibold text-on-surface">{county}</span>, ranked by rainfall, agro-ecological zone, and season suitability.
+        Top crops for <span className="font-semibold text-on-surface">{county}</span>, ranked by live rainfall, soil properties, and season suitability.
       </p>
-      {rankings.map((r) => {
+      {recs.map((r) => {
         const open = openCrop === r.crop.name;
         return (
-          <div key={r.crop.name} className="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden">
+          <div key={r.crop.name} className="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden border border-outline-variant/30">
             <button
               onClick={() => setOpenCrop(open ? null : r.crop.name)}
               className="w-full p-4 flex items-center gap-4 text-left"
             >
               <span className="text-3xl">{r.crop.emoji}</span>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <p className="font-semibold text-on-surface">{r.crop.name}</p>
                   <span className="text-sm font-bold text-primary">{r.score}%</span>
                 </div>
                 <div className="h-1.5 bg-surface-container-high rounded-full mt-1.5 overflow-hidden">
-                  <div className="h-full bg-primary rounded-full" style={{ width: `${r.score}%` }} />
+                  <div
+                    className={`h-full rounded-full ${r.score >= 70 ? 'bg-primary' : r.score >= 50 ? 'bg-tertiary' : 'bg-error'}`}
+                    style={{ width: `${r.score}%` }}
+                  />
                 </div>
               </div>
               {open ? <ChevronDown size={18} className="text-outline" /> : <ChevronRight size={18} className="text-outline" />}
             </button>
             {open && (
-              <div className="px-4 pb-4 space-y-2">
+              <div className="px-4 pb-4 space-y-3 border-t border-outline-variant/20 pt-3">
                 <div>
-                  <p className="text-xs font-semibold text-on-surface mb-1">Why</p>
+                  <p className="text-xs font-semibold text-on-surface mb-1">Analysis Breakdown</p>
                   <ul className="space-y-1">
-                    {r.reasons.map((rs, i) => (
+                    {r.explanations.map((rs, i) => (
                       <li key={i} className="text-xs text-on-surface-variant flex gap-2">
                         <span className="text-primary">•</span> {rs}
                       </li>
@@ -949,18 +1070,10 @@ function CropPicks({ county }: { county: string }) {
                   </ul>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-on-surface mb-1">Varieties</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {r.crop.varieties.map((v) => (
-                      <span key={v.name} className="text-xs bg-surface-container-high px-2 py-1 rounded-full text-on-surface-variant">
-                        {v.name} · {v.maturityDays}d
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-on-surface mb-1">Maturity</p>
-                  <p className="text-xs text-on-surface-variant">{r.crop.maturityDays} days · {r.crop.stages.length} growth stages</p>
+                  <p className="text-xs font-semibold text-on-surface mb-1">Recommended Variety</p>
+                  <span className="text-xs bg-primary/10 text-primary font-semibold px-2.5 py-1 rounded-full inline-block">
+                    {r.recommendedVariety} ({r.varietyMaturityDays} days)
+                  </span>
                 </div>
               </div>
             )}
@@ -1063,6 +1176,63 @@ function SelectField({
           ))}
         </select>
       </div>
+    </div>
+  );
+}
+
+/* ---------- Terrain Card (Open-Meteo Elevation) ---------- */
+
+function TerrainCard({ terrain }: { terrain: TerrainData }) {
+  const getSlopeColor = (percent: number) => {
+    if (percent < 8) return 'text-emerald-500';
+    if (percent < 15) return 'text-amber-500';
+    return 'text-orange-500';
+  };
+
+  return (
+    <div className="bg-surface-container-lowest rounded-2xl p-5 shadow-sm space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-on-surface flex items-center gap-1.5">
+          <Mountain size={15} className="text-primary" /> Terrain Analysis
+        </h4>
+        <span className="text-[10px] text-outline bg-surface-container-high px-2 py-0.5 rounded-full">Open-Meteo</span>
+      </div>
+
+      <div className="flex items-center gap-3 bg-surface-container-high rounded-xl p-3">
+        <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center shrink-0">
+          <Layers size={20} className="text-primary" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-on-surface">{terrain.terrainClass}</p>
+          <p className="text-xs text-on-surface-variant">Topography Profile</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="bg-surface-container-high/50 rounded-xl p-3 flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-semibold text-on-surface-variant uppercase mb-0.5">Elevation</p>
+            <p className="text-sm font-bold text-on-surface">{terrain.elevation.toLocaleString()}m</p>
+          </div>
+        </div>
+        <div className="bg-surface-container-high/50 rounded-xl p-3 flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-semibold text-on-surface-variant uppercase mb-0.5">Max Slope</p>
+            <p className={`text-sm font-bold ${getSlopeColor(terrain.slopePercent)}`}>
+              {terrain.slopePercent}% <span className="text-xs font-normal text-on-surface-variant">({terrain.slopeDegrees}°)</span>
+            </p>
+          </div>
+        </div>
+      </div>
+      
+      {terrain.slopePercent > 15 && (
+        <div className="mt-2 bg-orange-500/10 border border-orange-500/20 rounded-lg p-2.5 flex gap-2">
+          <AlertCircle size={14} className="text-orange-600 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-orange-800 dark:text-orange-300 leading-tight">
+            Steep slopes detected. Consider soil conservation measures like terracing to prevent erosion and runoff.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

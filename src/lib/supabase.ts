@@ -93,3 +93,19 @@ export type StorageAssessment = {
   advice: string;
   created_at: string;
 };
+
+export type FarmRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  boundary: string; // GeoJSON string from PostGIS
+  area_hectares: number | null;
+  county: string | null;
+  sub_county: string | null;
+  elevation_m: number | null;
+  slope_percent: number | null;
+  soil_type: string | null;
+  created_at: string;
+  updated_at: string;
+};
+

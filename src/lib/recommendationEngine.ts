@@ -6,19 +6,22 @@
 // multi-factor algorithm that uses real climate, soil, and weather data.
 
 import { CROPS, MONTH_TO_NUM, getCounty, getCrop, type CropInfo } from './data';
-import { fetchClimateStats, seasonalRainfall, currentSeason, getCountyFallbackClimate, type ClimateStats } from './climate';
+import { fetchClimateStats, seasonalRainfall, currentSeason, type ClimateStats } from './climate';
 import { fetchSoilData, type SoilData } from './soil';
 import { fetchWeather, type DailyForecast, type WeatherData } from './weather';
-import { fetchCropCalendar, type CropCalendarEntry } from './cropCalendar';
+import { fetchCropCalendar, fetchCropCalendars, type CropCalendarEntry } from './cropCalendar';
 import { getGrowthProfile } from './growthProfiles';
+import { getSessionCache, setSessionCache } from './fetchUtils';
+import { fetchTerrainData, type TerrainData } from './terrain';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
 export type DataSources = {
-  climate: 'live' | 'fallback';
-  soil: 'live' | 'fallback';
+  climate: 'live' | 'unavailable';
+  soil: 'live' | 'unavailable';
   weather: 'live' | 'unavailable';
   faoCalendar: 'live' | 'unavailable';
+  terrain: 'live' | 'unavailable';
 };
 
 export type ScoreBreakdown = {
@@ -47,15 +50,17 @@ export type RecommendationInput = {
   lat: number;
   lon: number;
   countyName?: string;
+  agroEcologicalZone?: string;
   plantingDate?: string;    // ISO date; defaults to next optimal window
   selectedCrop?: string;    // optional filter to single crop
 };
 
 export type RecommendationResult = {
   recommendations: CropRecommendation[];
-  climate: ClimateStats;
-  soil: SoilData;
+  climate: ClimateStats | null;
+  soil: SoilData | null;
   weather: WeatherData | null;
+  terrain: TerrainData | null;
   sources: DataSources;
   season: 'LR' | 'SR';
   plantingWindow: { start: string; end: string };
@@ -89,11 +94,18 @@ function monthName(monthNum: number): string {
  * Score how well the seasonal rainfall matches a crop's needs.
  * Uses real seasonal rainfall from the climate data.
  */
-function scoreRainfall(seasonRain: number, crop: CropInfo, climate: ClimateStats): {
+function scoreRainfall(seasonRain: number | null, crop: CropInfo, climate: ClimateStats | null): {
   score: number;
   explanation: string;
 } {
   const { minRainfall, maxRainfall } = crop;
+
+  if (seasonRain == null || !climate) {
+    return {
+      score: 70,
+      explanation: `Historical rainfall data currently unavailable from Climate API.`,
+    };
+  }
 
   // Perfect fit: seasonal rain is within the crop's range
   if (seasonRain >= minRainfall && seasonRain <= maxRainfall) {
@@ -139,10 +151,17 @@ function scoreRainfall(seasonRain: number, crop: CropInfo, climate: ClimateStats
  * Score soil suitability for a crop using ISRIC SoilGrids data.
  * Considers pH, nutrients, drainage, and organic carbon.
  */
-function scoreSoil(soil: SoilData, crop: CropInfo): {
+function scoreSoil(soil: SoilData | null, crop: CropInfo): {
   score: number;
   explanations: string[];
 } {
+  if (!soil) {
+    return {
+      score: 70,
+      explanations: ['Soil property data currently unavailable from ISRIC SoilGrids API.'],
+    };
+  }
+
   const explanations: string[] = [];
   let score = 75; // base score
 
@@ -194,7 +213,6 @@ function scoreSoil(soil: SoilData, crop: CropInfo): {
     score -= 10;
     explanations.push(`Poorly drained soil — plant on ridges or raised beds.`);
   } else if (soil.drainage.includes('Excessively')) {
-    // Some crops tolerate this better than others
     const penalty = crop.droughtTolerance > 60 ? 3 : 10;
     score -= penalty;
     explanations.push(`Excessively drained soil — mulch heavily to retain moisture.`);
@@ -218,10 +236,17 @@ function scoreSoil(soil: SoilData, crop: CropInfo): {
 /**
  * Score temperature suitability using climate average temperatures.
  */
-function scoreTemperature(climate: ClimateStats, crop: CropInfo): {
+function scoreTemperature(climate: ClimateStats | null, crop: CropInfo): {
   score: number;
   explanation: string;
 } {
+  if (!climate) {
+    return {
+      score: 70,
+      explanation: `Temperature data currently unavailable from Climate API.`,
+    };
+  }
+
   const avgTemp = (climate.avgTempMin + climate.avgTempMax) / 2;
   const { optimalTempMin, optimalTempMax } = crop;
 
@@ -253,10 +278,17 @@ function scoreTemperature(climate: ClimateStats, crop: CropInfo): {
 /**
  * Score planting timing — how well does the planting date fit the rain season window?
  */
-function scoreTiming(climate: ClimateStats, plantingMonth: number, season: 'LR' | 'SR'): {
+function scoreTiming(climate: ClimateStats | null, plantingMonth: number, season: 'LR' | 'SR'): {
   score: number;
   explanation: string;
 } {
+  if (!climate) {
+    return {
+      score: 70,
+      explanation: `Seasonal timing data currently unavailable from Climate API.`,
+    };
+  }
+
   const seasonStart = MONTH_TO_NUM[season === 'LR' ? climate.longRainsStart : climate.shortRainsStart] ?? 2;
   const seasonEnd = MONTH_TO_NUM[season === 'LR' ? climate.longRainsEnd : climate.shortRainsEnd] ?? 5;
   const seasonLabel = season === 'LR' ? 'long rains' : 'short rains';
@@ -307,15 +339,16 @@ function scoreTiming(climate: ClimateStats, plantingMonth: number, season: 'LR' 
 
 /**
  * Score agro-ecological zone compatibility.
- * Uses elevation from climate/weather data when available.
+ * Uses elevation and slope from terrain/climate data when available.
  */
-function scoreZone(crop: CropInfo, county: ReturnType<typeof getCounty>, elevation: number | null): {
+function scoreZone(crop: CropInfo, county: ReturnType<typeof getCounty>, aez: string | undefined, elevation: number | null, terrain: TerrainData | null): {
   score: number;
   explanation: string;
 } {
-  // Check if the county's AEZ matches the crop's preferred zones
-  const zoneMatch = county
-    ? crop.zones.some((z) => county.agroEcologicalZone.includes(z))
+  const actualZone = aez ?? county?.agroEcologicalZone;
+  // Check if the actual AEZ matches the crop's preferred zones
+  const zoneMatch = actualZone
+    ? crop.zones.some((z) => actualZone.includes(z))
     : false;
 
   // Check altitude fit if elevation data is available
@@ -328,28 +361,38 @@ function scoreZone(crop: CropInfo, county: ReturnType<typeof getCounty>, elevati
     }
   }
 
+  // Determine base zone/altitude score
+  let score = 30;
+  let explanation = '';
+
   if (zoneMatch && altitudeMatch) {
-    return {
-      score: 95,
-      explanation: `${county?.agroEcologicalZone ?? 'Zone'} is well-suited for ${crop.name}.${elevation != null ? ` Elevation: ${Math.round(elevation)}m.` : ''}`,
-    };
+    score = 95;
+    explanation = `${actualZone ?? 'Zone'} is well-suited for ${crop.name}.${elevation != null ? ` Elevation: ${Math.round(elevation)}m.` : ''}`;
+  } else if (zoneMatch && !altitudeMatch) {
+    score = 60;
+    explanation = `${actualZone ?? 'Zone'} is suitable but${altitudeExplanation}`;
+  } else if (!zoneMatch && altitudeMatch) {
+    score = 50;
+    explanation = `${actualZone ?? 'Zone'} is not an ideal zone for ${crop.name} (best in: ${crop.zones.join(', ')}). Yields may be lower.`;
+  } else {
+    score = 30;
+    explanation = `${actualZone ?? 'Zone'} is a poor match for ${crop.name}.${altitudeExplanation}`;
   }
-  if (zoneMatch && !altitudeMatch) {
-    return {
-      score: 60,
-      explanation: `${county?.agroEcologicalZone ?? 'Zone'} is suitable but${altitudeExplanation}`,
-    };
+
+  // Apply slope penalty if terrain data is available
+  if (terrain && terrain.slopePercent > 15) {
+    // Trees (macadamia, avocado, coffee) can handle steeper slopes better than row crops like maize
+    const isTreeCrop = ['Macadamia', 'Avocado', 'Coffee'].includes(crop.name);
+    if (!isTreeCrop && terrain.slopePercent > 20) {
+      score = Math.max(10, score - 30);
+      explanation += ` Steep slope (${terrain.slopePercent}%) makes cultivation of ${crop.name} difficult and increases erosion risk.`;
+    } else if (!isTreeCrop) {
+      score = Math.max(10, score - 15);
+      explanation += ` Moderate-steep slope (${terrain.slopePercent}%) may require soil conservation measures like terracing for ${crop.name}.`;
+    }
   }
-  if (!zoneMatch && altitudeMatch) {
-    return {
-      score: 50,
-      explanation: `${county?.agroEcologicalZone ?? 'Zone'} is not an ideal zone for ${crop.name} (best in: ${crop.zones.join(', ')}). Yields may be lower.`,
-    };
-  }
-  return {
-    score: 30,
-    explanation: `${county?.agroEcologicalZone ?? 'Zone'} is a poor match for ${crop.name}.${altitudeExplanation}`,
-  };
+
+  return { score, explanation };
 }
 
 /**
@@ -435,12 +478,22 @@ function selectVariety(crop: CropInfo, isLate: boolean, lowRainfall: boolean): {
 /**
  * Determine the optimal planting window from climate data.
  */
-function findOptimalPlantingWindow(climate: ClimateStats, season: 'LR' | 'SR'): {
+function findOptimalPlantingWindow(climate: ClimateStats | null, season: 'LR' | 'SR'): {
   start: string;
   end: string;
   label: string;
 } {
   const today = new Date();
+  if (!climate) {
+    const windowStart = today;
+    const windowEnd = addDays(windowStart, 14);
+    return {
+      start: fmt(windowStart),
+      end: fmt(windowEnd),
+      label: `${fmtDate(fmt(windowStart))} – ${fmtDate(fmt(windowEnd))}`,
+    };
+  }
+
   const startMonth = MONTH_TO_NUM[season === 'LR' ? climate.longRainsStart : climate.shortRainsStart] ?? 2;
   const endMonth = MONTH_TO_NUM[season === 'LR' ? climate.longRainsEnd : climate.shortRainsEnd] ?? 5;
   const seasonLabel = season === 'LR' ? 'Long Rains' : 'Short Rains';
@@ -448,11 +501,9 @@ function findOptimalPlantingWindow(climate: ClimateStats, season: 'LR' | 'SR'): 
   // Target: first 2 weeks of the rains window
   let windowStart = new Date(today.getFullYear(), startMonth, 1);
   if (windowStart < today) {
-    // If we're past the start of this season, check if we're still in window
     if (today.getMonth() <= endMonth) {
       windowStart = today;
     } else {
-      // Move to next year
       windowStart = new Date(today.getFullYear() + 1, startMonth, 1);
     }
   }
@@ -472,30 +523,45 @@ function findOptimalPlantingWindow(climate: ClimateStats, season: 'LR' | 'SR'): 
 
 /**
  * Generate crop recommendations using live data from multiple APIs.
- *
- * Pipeline:
- *   1. Fetch live data in parallel (climate, soil, weather, FAO calendar)
- *   2. Determine season and planting window
- *   3. Score each crop on multiple factors
- *   4. Rank and return with explanations
+ * Only relies on live API data and cached data.
  */
 export async function generateRecommendations(input: RecommendationInput): Promise<RecommendationResult> {
-  const { lat, lon, countyName, plantingDate, selectedCrop } = input;
+  const { lat, lon, countyName, agroEcologicalZone, plantingDate, selectedCrop } = input;
   const county = countyName ? getCounty(countyName) : undefined;
 
-  // Step 1: Fetch live data in parallel
-  const [climate, soil, weather] = await Promise.all([
-    fetchClimateStats(lat, lon, countyName).catch(() => getCountyFallbackClimate(countyName)),
-    fetchSoilData(lat, lon, countyName),
+  const roundedLat = Math.round(lat * 10) / 10;
+  const roundedLon = Math.round(lon * 10) / 10;
+  const cacheKey = `recs_${roundedLat}_${roundedLon}_${countyName ?? ''}_${selectedCrop ?? ''}_${plantingDate ?? ''}`;
+
+  const sessionCached = getSessionCache<RecommendationResult>(cacheKey);
+  if (sessionCached) {
+    return sessionCached;
+  }
+
+  const cropsToScore = selectedCrop
+    ? CROPS.filter((c) => c.name.toLowerCase() === selectedCrop.toLowerCase())
+    : CROPS;
+
+  const cropNamesToFetch = cropsToScore.map((c) => c.name);
+
+  // Step 1: Fetch ALL 5 live data sources simultaneously in parallel
+  const [climate, soil, weather, faoMap, terrain] = await Promise.all([
+    fetchClimateStats(lat, lon).catch(() => null),
+    fetchSoilData(lat, lon).catch(() => null),
     fetchWeather(lat, lon).catch(() => null),
+    fetchCropCalendars(cropNamesToFetch, countyName).catch(() => ({}) as Record<string, CropCalendarEntry>),
+    fetchTerrainData(lat, lon).catch(() => null),
   ]);
+
+  const hasFaoEntries = Object.keys(faoMap).length > 0;
 
   // Track data sources
   const sources: DataSources = {
-    climate: climate.source === 'Open-Meteo Climate Archive' ? 'live' : 'fallback',
-    soil: soil.source.includes('ISRIC') ? 'live' : 'fallback',
+    climate: climate != null ? 'live' : 'unavailable',
+    soil: soil != null ? 'live' : 'unavailable',
     weather: weather != null ? 'live' : 'unavailable',
-    faoCalendar: 'unavailable', // will update below
+    faoCalendar: hasFaoEntries ? 'live' : 'unavailable',
+    terrain: terrain != null ? 'live' : 'unavailable',
   };
 
   // Step 2: Determine season and planting window
@@ -503,24 +569,20 @@ export async function generateRecommendations(input: RecommendationInput): Promi
   const plantDate = plantingDate ? new Date(plantingDate) : today;
   const plantMonth = plantDate.getMonth();
   const season = currentSeason(plantMonth);
-  const seasonRain = seasonalRainfall(climate, season);
+  const seasonRain = climate ? seasonalRainfall(climate, season) : null;
   const plantingWindow = findOptimalPlantingWindow(climate, season);
 
   // Step 3: Determine planting timing context
-  const seasonStartMonth = MONTH_TO_NUM[season === 'LR' ? climate.longRainsStart : climate.shortRainsStart] ?? 2;
-  const seasonEndMonth = MONTH_TO_NUM[season === 'LR' ? climate.longRainsEnd : climate.shortRainsEnd] ?? 5;
+  const seasonStartMonth = climate ? (MONTH_TO_NUM[season === 'LR' ? climate.longRainsStart : climate.shortRainsStart] ?? 2) : 2;
+  const seasonEndMonth = climate ? (MONTH_TO_NUM[season === 'LR' ? climate.longRainsEnd : climate.shortRainsEnd] ?? 5) : 5;
   const inWindow = plantMonth >= seasonStartMonth && plantMonth <= seasonEndMonth;
   const isLate = !inWindow && plantMonth > seasonEndMonth && (plantMonth - seasonEndMonth) <= 2;
-  const lowRainfall = seasonRain < 400;
+  const lowRainfall = seasonRain != null ? seasonRain < 400 : false;
 
   // Elevation from climate data or weather
-  const elevation = climate.elevation ?? weather?.elevation ?? null;
+  const elevation = climate?.elevation ?? weather?.elevation ?? null;
 
   // Step 4: Score each crop
-  const cropsToScore = selectedCrop
-    ? CROPS.filter((c) => c.name.toLowerCase() === selectedCrop.toLowerCase())
-    : CROPS;
-
   const recommendations: CropRecommendation[] = [];
 
   for (const crop of cropsToScore) {
@@ -540,7 +602,8 @@ export async function generateRecommendations(input: RecommendationInput): Promi
     const soilResult = scoreSoil(soil, crop);
     const temperature = scoreTemperature(climate, crop);
     const timing = scoreTiming(climate, plantMonth, season);
-    const zone = scoreZone(crop, county ?? undefined, elevation);
+    // 5. Zone Compatibility (combines AEZ, altitude, and terrain slope)
+    const zone = scoreZone(crop, county ?? undefined, agroEcologicalZone, elevation, terrain);
     const forecast = forecastBonus(weather?.daily ?? null);
 
     explanations.push(rainfall.explanation);
@@ -630,6 +693,7 @@ export async function generateRecommendations(input: RecommendationInput): Promi
     climate,
     soil,
     weather,
+    terrain,
     sources,
     season,
     plantingWindow: { start: plantingWindow.start, end: plantingWindow.end },
@@ -642,9 +706,10 @@ export async function generateRecommendations(input: RecommendationInput): Promi
  */
 export async function analyzeSpecificCrop(input: RecommendationInput & { crop: string }): Promise<{
   recommendation: CropRecommendation | null;
-  climate: ClimateStats;
-  soil: SoilData;
+  climate: ClimateStats | null;
+  soil: SoilData | null;
   weather: WeatherData | null;
+  terrain: TerrainData | null;
   sources: DataSources;
   season: 'LR' | 'SR';
 }> {
@@ -658,6 +723,7 @@ export async function analyzeSpecificCrop(input: RecommendationInput & { crop: s
     climate: result.climate,
     soil: result.soil,
     weather: result.weather,
+    terrain: result.terrain,
     sources: result.sources,
     season: result.season,
   };
