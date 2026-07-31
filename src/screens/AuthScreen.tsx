@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Sprout, Mail, Lock, User as UserIcon, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, User as UserIcon, Eye, EyeOff } from 'lucide-react';
+import Logo from '@/components/Logo';
 import { useAuth } from '@/context/AuthContext';
 
 export default function AuthScreen() {
@@ -28,8 +29,8 @@ export default function AuthScreen() {
     <div className="min-h-screen bg-gradient-to-br from-primary via-primary-container to-surface-container-high flex flex-col items-center justify-center p-4 md:p-8">
       <div className="w-full max-w-md md:max-w-lg lg:max-w-xl mx-auto py-8">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-20 h-20 rounded-3xl bg-white/15 backdrop-blur-md flex items-center justify-center mb-4 ring-4 ring-white/10 shadow-lg">
-            <Sprout size={44} className="text-on-primary" strokeWidth={2.2} />
+          <div className="w-20 h-20 rounded-[24px] bg-primary-container/20 flex items-center justify-center mb-6 shadow-xl shadow-primary/20 p-2 ring-4 ring-white/10">
+            <Logo className="w-14 h-14" />
           </div>
           <h1 className="text-3xl md:text-4xl font-extrabold text-on-primary tracking-tight">Panda Sasa</h1>
           <p className="text-on-primary/80 text-sm md:text-base mt-1.5 text-center font-medium max-w-sm">

@@ -1,4 +1,5 @@
 import { Home, Sprout, ShoppingBag, MapPin, User } from 'lucide-react';
+import Logo from '@/components/Logo';
 
 export type TabKey = 'home' | 'advisor' | 'market' | 'map' | 'profile';
 
@@ -53,8 +54,8 @@ export default function BottomNav({
       <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 border-r border-outline-variant/60 bg-surface-container-lowest/80 backdrop-blur-md min-h-screen sticky top-0 h-screen p-6 shadow-sm">
         {/* Brand Header */}
         <div className="flex items-center gap-3 mb-8 px-2">
-          <div className="w-11 h-11 rounded-2xl bg-primary flex items-center justify-center text-on-primary shadow-md shadow-primary/20">
-            <Sprout size={26} strokeWidth={2.4} />
+          <div className="w-11 h-11 flex items-center justify-center">
+            <Logo className="w-9 h-9" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-on-surface tracking-tight leading-none">Panda Sasa</h1>
