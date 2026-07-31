@@ -131,6 +131,11 @@ export default function AuthScreen() {
         <p className="text-on-primary/70 text-xs text-center mt-6 leading-relaxed">
           Panda Sasa uses KALRO crop calendars, rainfall forecasts, and agro-ecological data to give you explainable planting recommendations.
         </p>
+        <p className="text-on-primary/70 text-xs text-center mt-6 leading-relaxed">
+          <i>
+            By using Panda Sasa, you agree to our Terms of Service and Privacy Policy. We process your location data strictly to provide tailored agricultural advice. Recommendations are estimates and should be used as an advisory guide.
+          </i>
+        </p>
       </div>
     </div>
   );

@@ -17,7 +17,7 @@ import FarmDrawer from '@/components/FarmDrawer';
 
 // Map style options
 const getMapStyles = (key: string) => ({
-  satellite: `https://api.maptiler.com/maps/hybrid/style.json?key=${key}`,
+  satellite: `https://api.maptiler.com/maps/hybrid-v4/style.json?key=${key}`,
   streets: `https://api.maptiler.com/maps/streets-v2/style.json?key=${key}`,
   terrain: `https://api.maptiler.com/maps/outdoor-v2/style.json?key=${key}`,
 });

@@ -3,8 +3,8 @@
 
 import * as maplibregl from 'maplibre-gl';
 
-// Token from environment — set VITE_MAPTILER_KEY in .env
-export const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY as string;
+// Token from environment — set VITE_MAPTILER_KEY in .env, or fallback to the known working key
+export const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY || 'wfQjLuxDzajI9dS1uBT2';
 
 // Kenya center coordinates (roughly Nairobi)
 export const KENYA_CENTER: [number, number] = [37.9, 0.02];
@@ -30,7 +30,7 @@ export const RAINFALL_COLORS = {
 export function createMap(container: HTMLElement): maplibregl.Map {
   const map = new maplibregl.Map({
     container,
-    style: `https://api.maptiler.com/maps/hybrid/style.json?key=${MAPTILER_KEY}`,
+    style: `https://api.maptiler.com/maps/hybrid-v4/style.json?key=${MAPTILER_KEY}`,
     center: KENYA_CENTER,
     zoom: KENYA_ZOOM,
     maxBounds: [
