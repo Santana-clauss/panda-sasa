@@ -89,6 +89,11 @@ export default function MapScreen() {
       const countyGeoJSON = buildCountyGeoJSON();
       const pointsGeoJSON = buildCountyPointsGeoJSON();
 
+      // Find the first symbol (text/icon) layer to insert our polygons UNDERNEATH it.
+      // This prevents our colored fills from obscuring city names, roads, and borders.
+      const layers = map.getStyle()?.layers || [];
+      const firstSymbolId = layers.find((layer) => layer.type === 'symbol')?.id;
+
     // County boundary fill layer
     map.addSource('county-boundaries', {
       type: 'geojson',
@@ -110,7 +115,7 @@ export default function MapScreen() {
         ],
         'fill-opacity': 0.25,
       },
-    });
+    }, firstSymbolId);
 
     map.addLayer({
       id: 'county-outline',
@@ -128,7 +133,7 @@ export default function MapScreen() {
         'line-width': 2,
         'line-opacity': 0.7,
       },
-    });
+    }, firstSymbolId);
 
     // Hover highlight
     map.addLayer({
@@ -140,7 +145,7 @@ export default function MapScreen() {
         'fill-opacity': 0.15,
       },
       filter: ['==', ['get', 'name'], ''],
-    });
+    }, firstSymbolId);
 
     // Selected highlight
     map.addLayer({
@@ -152,7 +157,7 @@ export default function MapScreen() {
         'fill-opacity': 0.35,
       },
       filter: ['==', ['get', 'name'], ''],
-    });
+    }, firstSymbolId);
 
     // County name labels
     map.addSource('county-points', {

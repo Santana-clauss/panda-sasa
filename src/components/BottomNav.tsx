@@ -6,7 +6,7 @@ const tabs: { key: TabKey; label: string; icon: typeof Home; description: string
   { key: 'home', label: 'Home', icon: Home, description: 'Dashboard & Tasks' },
   { key: 'advisor', label: 'Advisor', icon: Sprout, description: 'Planting Recommendations' },
   { key: 'market', label: 'Market', icon: ShoppingBag, description: 'Opportunity Signals' },
-  { key: 'map', label: 'Zones', icon: MapPin, description: 'Agro-Ecological Map' },
+  // { key: 'map', label: 'Zones', icon: MapPin, description: 'Agro-Ecological Map' }, // Hidden for now per user request
   { key: 'profile', label: 'Profile', icon: User, description: 'Settings & Seasons' },
 ];
 
