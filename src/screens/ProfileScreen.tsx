@@ -9,7 +9,7 @@ import { COUNTIES, CROPS } from '@/lib/data';
 import { calculateStorageRisk, type StorageRiskInput, type StorageRiskResult } from '@/lib/recommendations';
 
 export default function ProfileScreen() {
-  const { profile, isGuest, signOut, refreshProfile } = useAuth();
+  const { profile, isGuest, signOut, refreshProfile, activeCounty } = useAuth();
   const [editing, setEditing] = useState(false);
   const [view, setView] = useState<'profile' | 'storage' | 'history' | 'offline'>('profile');
   const [assessments, setAssessments] = useState<StorageAssessment[]>([]);
@@ -67,8 +67,8 @@ export default function ProfileScreen() {
 
             {!isGuest && (
               <div className="divide-y divide-outline-variant/40">
-                <ProfileRow icon={MapPin} label="County" value={profile?.county ?? 'Nakuru'} />
-                <ProfileRow icon={MapPin} label="Sub-county" value={profile?.sub_county ?? '—'} />
+                <ProfileRow icon={MapPin} label="Active County" value={activeCounty} />
+                <ProfileRow icon={MapPin} label="Profile Sub-county" value={profile?.sub_county ?? '—'} />
                 <ProfileRow icon={Globe} label="Language" value={langName(profile?.preferred_language ?? 'en')} />
               </div>
             )}

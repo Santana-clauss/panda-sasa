@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode, useMemo } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, type Profile } from '@/lib/supabase';
 import { detectLocation } from '@/lib/location';
+import { COUNTIES } from '@/lib/data';
 
 type AuthContextValue = {
   session: Session | null;
@@ -11,6 +12,9 @@ type AuthContextValue = {
   loading: boolean;
   detectedCounty: string | null;
   detectedCoords: { latitude: number; longitude: number } | null;
+  activeCounty: string;
+  activeCoords: { latitude: number; longitude: number } | null;
+  setManualLocation: (county: string, coords: { latitude: number; longitude: number } | null) => void;
   detectingLocation: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string, name: string) => Promise<{ error: string | null }>;
@@ -29,6 +33,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [detectedCounty, setDetectedCounty] = useState<string | null>(null);
   const [detectedCoords, setDetectedCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [detectingLocation, setDetectingLocation] = useState(false);
+
+  const [manualCoords, setManualCoords] = useState<{ latitude: number; longitude: number } | null>(() => {
+    try {
+      const saved = localStorage.getItem('panda_sasa_location');
+      return saved ? JSON.parse(saved).coords : null;
+    } catch { return null; }
+  });
+  const [manualCounty, setManualCounty] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem('panda_sasa_location');
+      return saved ? JSON.parse(saved).county : null;
+    } catch { return null; }
+  });
+
+  const activeCounty = manualCounty ?? profile?.county ?? detectedCounty ?? 'Nakuru';
+  
+  const activeCoords = useMemo(() => {
+    if (manualCoords) return manualCoords;
+    if (detectedCoords && !manualCounty) return detectedCoords; // Only use detected coords if no manual county override
+    const ci = COUNTIES.find((c) => c.name === activeCounty);
+    return ci ? { latitude: ci.latitude, longitude: ci.longitude } : null;
+  }, [manualCoords, detectedCoords, manualCounty, activeCounty]);
+
+  const setManualLocation = (county: string, coords: { latitude: number; longitude: number } | null) => {
+    setManualCounty(county);
+    setManualCoords(coords);
+    localStorage.setItem('panda_sasa_location', JSON.stringify({ county, coords }));
+  };
 
   // Auto-detect the user's exact location via browser geolocation. Used as the
   // default for guests and for users whose profile doesn't specify a county yet.
@@ -124,7 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, user: session?.user ?? null, profile, isGuest, loading, detectedCounty, detectedCoords, detectingLocation, signIn, signUp, signInAsGuest, signOut, refreshProfile }}
+      value={{ session, user: session?.user ?? null, profile, isGuest, loading, detectedCounty, detectedCoords, activeCounty, activeCoords, setManualLocation, detectingLocation, signIn, signUp, signInAsGuest, signOut, refreshProfile }}
     >
       {children}
     </AuthContext.Provider>

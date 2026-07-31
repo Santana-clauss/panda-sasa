@@ -28,8 +28,7 @@ function daysUntil(dateStr: string) {
 type Tab = 'mine' | 'buyers' | 'products' | 'demand';
 
 export default function MarketScreen() {
-  const { profile, isGuest, detectedCounty } = useAuth();
-  const countyName = profile?.county ?? detectedCounty ?? 'Nakuru';
+  const { profile, isGuest, activeCounty: countyName } = useAuth();
   const county = COUNTIES.find((c) => c.name === countyName) ?? COUNTIES[0];
 
   const [tab, setTab] = useState<Tab>('mine');

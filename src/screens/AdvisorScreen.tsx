@@ -34,15 +34,9 @@ export function getScoreRating(val: number): { label: 'Best' | 'Good' | 'Okay' |
 type View = 'guidance' | 'plan' | 'crops' | 'seasons';
 
 export default function AdvisorScreen() {
-  const { profile, isGuest, detectedCounty, detectedCoords } = useAuth();
+  const { profile, isGuest, activeCounty: county, activeCoords: lookupCoords } = useAuth();
   const [view, setView] = useState<View>('guidance');
   const [seasons, setSeasons] = useState<Season[]>([]);
-
-  const county = profile?.county ?? detectedCounty ?? 'Nakuru';
-  const lookupCoords = detectedCoords ?? (() => {
-    const ci = COUNTIES.find((c) => c.name === county);
-    return ci ? { latitude: ci.latitude, longitude: ci.longitude } : null;
-  })();
 
   async function loadSeasons() {
     if (isGuest) {

@@ -11,7 +11,7 @@ import { WeatherIcon } from '@/components/ui';
 import type { TabKey } from '@/components/BottomNav';
 
 export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => void }) {
-  const { profile, isGuest, detectedCounty, detectedCoords } = useAuth();
+  const { profile, isGuest, activeCounty: county, activeCoords: lookupCoords, setManualLocation } = useAuth();
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [liveRecs, setLiveRecs] = useState<CropRecommendation[]>([]);
   const [dataSources, setDataSources] = useState<DataSources | null>(null);
@@ -21,29 +21,18 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
   const [temp, setTemp] = useState<number | null>(null);
   const [notifs, setNotifs] = useState<{ id: string; title: string; body: string; priority: string; type: string }[]>([]);
   const [currentActivity, setCurrentActivity] = useState<Activity | null>(null);
-  const [manualCoords, setManualCoords] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [manualCounty, setManualCounty] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [locMsg, setLocMsg] = useState<string | null>(null);
   const [showCountyPicker, setShowCountyPicker] = useState(false);
 
-  const county = manualCounty ?? profile?.county ?? detectedCounty ?? 'Nakuru';
   const countyInfo = useMemo(() => COUNTIES.find((c) => c.name === county), [county]);
-
-  // Use the user's exact GPS coordinates for weather and soil lookups when
-  // available. Manual override takes priority, then detected GPS, then county center.
-  const lookupCoords = useMemo(
-    () => manualCoords ?? detectedCoords ?? (countyInfo ? { latitude: countyInfo.latitude, longitude: countyInfo.longitude } : null),
-    [manualCoords, detectedCoords, countyInfo],
-  );
 
   async function useMyLocation() {
     setLocating(true);
     setLocMsg(null);
     try {
       const loc = await detectLocation();
-      setManualCoords({ latitude: loc.latitude, longitude: loc.longitude });
-      setManualCounty(loc.county.name);
+      setManualLocation(loc.county.name, { latitude: loc.latitude, longitude: loc.longitude });
       setLocMsg(`Located: ${loc.county.name} (±${Math.round(loc.accuracyMeters ?? 0)}m)`);
     } catch (e) {
       setLocMsg(e instanceof Error ? e.message : 'Could not detect location.');
@@ -53,8 +42,7 @@ export default function HomeScreen({ onNavigate }: { onNavigate: (k: TabKey) => 
   }
 
   function selectCounty(name: string) {
-    setManualCounty(name);
-    setManualCoords(null);
+    setManualLocation(name, null);
     setShowCountyPicker(false);
     setLocMsg(`Using ${name}`);
   }

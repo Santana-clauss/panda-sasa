@@ -7,7 +7,7 @@ import AdvisorScreen from '@/screens/AdvisorScreen';
 import ProfileScreen from '@/screens/ProfileScreen';
 import MarketScreen from '@/screens/MarketScreen';
 
-// Lazy-load MapScreen so mapbox-gl (~230KB gzip) is code-split
+// Lazy-load MapScreen so maplibre-gl (~230KB gzip) is code-split
 const MapScreen = lazy(() => import('@/screens/MapScreen'));
 
 function MapFallback() {

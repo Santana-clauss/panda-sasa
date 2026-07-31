@@ -1,17 +1,17 @@
 // Mapbox GL JS configuration & initialization helper
 // Uses satellite-streets style with Kenya-centric defaults
 
-import mapboxgl from 'mapbox-gl';
+import * as maplibregl from 'maplibre-gl';
 
-// Token from environment — set VITE_MAPBOX_TOKEN in .env
-export const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
+// Token from environment — set VITE_MAPTILER_KEY in .env
+export const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY as string;
 
 // Kenya center coordinates (roughly Nairobi)
 export const KENYA_CENTER: [number, number] = [37.9, 0.02];
 export const KENYA_ZOOM = 5.8;
 
 // Kenya bounding box [sw_lng, sw_lat, ne_lng, ne_lat]
-export const KENYA_BOUNDS: mapboxgl.LngLatBoundsLike = [
+export const KENYA_BOUNDS: maplibregl.LngLatBoundsLike = [
   [33.9, -4.7],  // Southwest
   [41.9, 5.5],   // Northeast
 ];
@@ -24,15 +24,13 @@ export const RAINFALL_COLORS = {
 } as const;
 
 /**
- * Create a Mapbox GL map instance inside a container element.
+ * Create a MapLibre GL map instance inside a container element.
  * Returns the map instance (caller should store it in a ref).
  */
-export function createMap(container: HTMLElement): mapboxgl.Map {
-  mapboxgl.accessToken = MAPBOX_TOKEN;
-
-  const map = new mapboxgl.Map({
+export function createMap(container: HTMLElement): maplibregl.Map {
+  const map = new maplibregl.Map({
     container,
-    style: 'mapbox://styles/mapbox/satellite-streets-v12',
+    style: `https://api.maptiler.com/maps/hybrid/style.json?key=${MAPTILER_KEY}`,
     center: KENYA_CENTER,
     zoom: KENYA_ZOOM,
     maxBounds: [
@@ -43,13 +41,13 @@ export function createMap(container: HTMLElement): mapboxgl.Map {
   });
 
   // Add navigation controls (zoom +/- and compass)
-  map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), 'top-right');
+  map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
 
   // Add scale bar
-  map.addControl(new mapboxgl.ScaleControl({ maxWidth: 120 }), 'bottom-left');
+  map.addControl(new maplibregl.ScaleControl({ maxWidth: 120 }), 'bottom-left');
 
   // Add attribution in compact mode
-  map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
+  map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
   return map;
 }
@@ -58,10 +56,10 @@ export function createMap(container: HTMLElement): mapboxgl.Map {
  * Add the user's GPS location as a pulsing dot on the map.
  */
 export function addUserLocationMarker(
-  map: mapboxgl.Map,
+  map: maplibregl.Map,
   lat: number,
   lon: number,
-): mapboxgl.Marker {
+): maplibregl.Marker {
   // Create a pulsing dot element
   const el = document.createElement('div');
   el.className = 'user-location-marker';
@@ -74,7 +72,7 @@ export function addUserLocationMarker(
     "></div>
   `;
 
-  const marker = new mapboxgl.Marker({ element: el })
+  const marker = new maplibregl.Marker({ element: el })
     .setLngLat([lon, lat])
     .addTo(map);
 

@@ -3,12 +3,12 @@ import {
   MapPin, CloudRain, Sprout, X, Droplets, Loader2, Thermometer,
   Layers, LocateFixed, ChevronRight, PenTool, Fence,
 } from 'lucide-react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+import * as maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { COUNTIES, type County } from '@/lib/data';
 import { fetchClimateStats, type ClimateStats } from '@/lib/climate';
 import { generateRecommendations, type CropRecommendation } from '@/lib/recommendationEngine';
-import { createMap, MAPBOX_TOKEN, KENYA_CENTER, RAINFALL_COLORS, addUserLocationMarker } from '@/lib/mapbox';
+import { createMap, MAPTILER_KEY, KENYA_CENTER, RAINFALL_COLORS, addUserLocationMarker } from '@/lib/maplibre';
 import { buildCountyGeoJSON, buildCountyPointsGeoJSON } from '@/lib/kenyaCounties.geojson';
 import { detectLocation } from '@/lib/location';
 import { useAuth } from '@/context/AuthContext';
@@ -16,24 +16,26 @@ import { getUserFarms, type Farm } from '@/lib/farms';
 import FarmDrawer from '@/components/FarmDrawer';
 
 // Map style options
-const MAP_STYLES = {
-  satellite: 'mapbox://styles/mapbox/satellite-streets-v12',
-  streets: 'mapbox://styles/mapbox/streets-v12',
-  terrain: 'mapbox://styles/mapbox/outdoors-v12',
-} as const;
+const getMapStyles = (key: string) => ({
+  satellite: `https://api.maptiler.com/maps/hybrid/style.json?key=${key}`,
+  streets: `https://api.maptiler.com/maps/streets-v2/style.json?key=${key}`,
+  terrain: `https://api.maptiler.com/maps/outdoor-v2/style.json?key=${key}`,
+});
 
-type StyleKey = keyof typeof MAP_STYLES;
+type StyleKey = 'satellite' | 'streets' | 'terrain';
 
 type DrawMode = 'idle' | 'drawing' | 'editing';
 
 export default function MapScreen() {
-  const { isGuest } = useAuth();
+  const { isGuest, activeCounty, activeCoords } = useAuth();
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
-  const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const userMarkerRef = useRef<maplibregl.Marker | null>(null);
   const drawPointsRef = useRef<[number, number][]>([]);
-  const drawMarkersRef = useRef<mapboxgl.Marker[]>([]);
-  const [selected, setSelected] = useState<County | null>(null);
+  const drawMarkersRef = useRef<maplibregl.Marker[]>([]);
+  
+  const defaultCounty = COUNTIES.find((c) => c.name === activeCounty) ?? null;
+  const [selected, setSelected] = useState<County | null>(defaultCounty);
   const [mapReady, setMapReady] = useState(false);
   const [currentStyle, setCurrentStyle] = useState<StyleKey>('satellite');
   const [showStylePicker, setShowStylePicker] = useState(false);
@@ -47,8 +49,8 @@ export default function MapScreen() {
   const [savedFarms, setSavedFarms] = useState<Farm[]>([]);
   const [detectedCountyForFarm, setDetectedCountyForFarm] = useState<string | null>(null);
 
-  // Check for Mapbox token
-  const hasToken = !!MAPBOX_TOKEN;
+  // Check for MapTiler key
+  const hasToken = !!MAPTILER_KEY;
 
   // Initialize map
   useEffect(() => {
@@ -58,14 +60,15 @@ export default function MapScreen() {
       const map = createMap(mapContainerRef.current);
       mapRef.current = map;
 
-      map.on('load', () => {
+      map.on('style.load', () => {
         setMapReady(true);
+        map.resize();
         addCountyLayers(map);
       });
 
-      map.on('error', (e) => {
-        console.error('Mapbox error:', e);
-        setMapError('Failed to load map. Check your Mapbox token.');
+      map.on('error', (e: any) => {
+        console.error('Mapbox/MapLibre error:', e);
+        setMapError('Failed to load map. Check your MapTiler key.');
       });
 
       return () => {
@@ -79,9 +82,12 @@ export default function MapScreen() {
   }, [hasToken]);
 
   // Add county boundary & label layers
-  const addCountyLayers = useCallback((map: mapboxgl.Map) => {
-    const countyGeoJSON = buildCountyGeoJSON();
-    const pointsGeoJSON = buildCountyPointsGeoJSON();
+  const addCountyLayers = useCallback((map: maplibregl.Map) => {
+    if (map.getSource('county-boundaries')) return;
+
+    try {
+      const countyGeoJSON = buildCountyGeoJSON();
+      const pointsGeoJSON = buildCountyPointsGeoJSON();
 
     // County boundary fill layer
     map.addSource('county-boundaries', {
@@ -136,6 +142,18 @@ export default function MapScreen() {
       filter: ['==', ['get', 'name'], ''],
     });
 
+    // Selected highlight
+    map.addLayer({
+      id: 'county-selected',
+      type: 'fill',
+      source: 'county-boundaries',
+      paint: {
+        'fill-color': '#16a34a', // green matching primary
+        'fill-opacity': 0.35,
+      },
+      filter: ['==', ['get', 'name'], ''],
+    });
+
     // County name labels
     map.addSource('county-points', {
       type: 'geojson',
@@ -161,7 +179,7 @@ export default function MapScreen() {
     });
 
     // Click handler — select county
-    map.on('click', 'county-fill', (e) => {
+    map.on('click', 'county-fill', (e: any) => {
       const feature = e.features?.[0];
       if (!feature) return;
       const name = feature.properties?.name;
@@ -179,10 +197,13 @@ export default function MapScreen() {
     });
 
     // Highlight on hover
-    map.on('mousemove', 'county-fill', (e) => {
+    map.on('mousemove', 'county-fill', (e: any) => {
       const name = e.features?.[0]?.properties?.name ?? '';
       map.setFilter('county-highlight', ['==', ['get', 'name'], name]);
     });
+    } catch (err) {
+      console.error('Error adding county layers:', err);
+    }
   }, []);
 
   // Load saved farms
@@ -192,6 +213,31 @@ export default function MapScreen() {
       .then(setSavedFarms)
       .catch(() => { /* ignore for guests */ });
   }, [isGuest]);
+
+  // Sync selected county to the map layer
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    try {
+      if (map.getLayer('county-selected')) {
+        map.setFilter('county-selected', ['==', ['get', 'name'], selected?.name ?? '']);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [selected, mapReady]);
+
+  // Fly to GPS location on load if available
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !activeCoords) return;
+
+    if (userMarkerRef.current) userMarkerRef.current.remove();
+    userMarkerRef.current = addUserLocationMarker(map, activeCoords.latitude, activeCoords.longitude);
+    
+    // Only fly on initial load or when GPS manually updates
+    map.flyTo({ center: [activeCoords.longitude, activeCoords.latitude], zoom: 9, duration: 2000 });
+  }, [mapReady, activeCoords]);
 
   // Display saved farm polygons on the map
   useEffect(() => {
@@ -208,7 +254,7 @@ export default function MapScreen() {
     };
 
     if (map.getSource('saved-farms')) {
-      (map.getSource('saved-farms') as mapboxgl.GeoJSONSource).setData(farmGeoJSON);
+      (map.getSource('saved-farms') as maplibregl.GeoJSONSource).setData(farmGeoJSON);
     } else {
       map.addSource('saved-farms', { type: 'geojson', data: farmGeoJSON });
       map.addLayer({
@@ -243,7 +289,7 @@ export default function MapScreen() {
     if (!map) return;
     setCurrentStyle(style);
     setShowStylePicker(false);
-    map.setStyle(MAP_STYLES[style]);
+    map.setStyle(getMapStyles(MAPTILER_KEY)[style]);
     // Re-add layers after style change
     map.once('style.load', () => {
       addCountyLayers(map);
@@ -278,12 +324,12 @@ export default function MapScreen() {
     drawMarkersRef.current.forEach((m) => m.remove());
     drawMarkersRef.current = [];
     if (map?.getSource('draw-polygon')) {
-      (map.getSource('draw-polygon') as mapboxgl.GeoJSONSource).setData({
+      (map.getSource('draw-polygon') as maplibregl.GeoJSONSource).setData({
         type: 'FeatureCollection', features: [],
       });
     }
     if (map?.getSource('draw-lines')) {
-      (map.getSource('draw-lines') as mapboxgl.GeoJSONSource).setData({
+      (map.getSource('draw-lines') as maplibregl.GeoJSONSource).setData({
         type: 'FeatureCollection', features: [],
       });
     }
@@ -324,27 +370,27 @@ export default function MapScreen() {
 
     map.getCanvas().style.cursor = 'crosshair';
 
-    const onClick = (e: mapboxgl.MapMouseEvent) => {
+    const onClick = (e: maplibregl.MapMouseEvent) => {
       const lngLat: [number, number] = [e.lngLat.lng, e.lngLat.lat];
       drawPointsRef.current.push(lngLat);
 
       // Add vertex marker
       const el = document.createElement('div');
       el.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#f59e0b;border:2px solid white;cursor:pointer;';
-      const marker = new mapboxgl.Marker({ element: el }).setLngLat(lngLat).addTo(map);
+      const marker = new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(map);
       drawMarkersRef.current.push(marker);
 
       // Update line
       const pts = drawPointsRef.current;
       if (pts.length >= 2) {
-        (map.getSource('draw-lines') as mapboxgl.GeoJSONSource).setData({
+        (map.getSource('draw-lines') as maplibregl.GeoJSONSource).setData({
           type: 'Feature',
           properties: {},
           geometry: { type: 'LineString', coordinates: [...pts, pts[0]] },
         });
       }
       if (pts.length >= 3) {
-        (map.getSource('draw-polygon') as mapboxgl.GeoJSONSource).setData({
+        (map.getSource('draw-polygon') as maplibregl.GeoJSONSource).setData({
           type: 'Feature',
           properties: {},
           geometry: { type: 'Polygon', coordinates: [[...pts, pts[0]]] },
@@ -352,7 +398,7 @@ export default function MapScreen() {
       }
     };
 
-    const onDblClick = (e: mapboxgl.MapMouseEvent) => {
+    const onDblClick = (e: maplibregl.MapMouseEvent) => {
       e.preventDefault();
       const pts = drawPointsRef.current;
       if (pts.length >= 3) {
@@ -405,7 +451,7 @@ export default function MapScreen() {
       {/* Map container — full width, fills screen */}
       <div className="relative w-full" style={{ height: 'calc(100vh - 80px)' }}>
         {/* Map */}
-        <div ref={mapContainerRef} className="absolute inset-0" />
+        <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
 
         {/* Map loading overlay */}
         {!mapReady && !mapError && (
@@ -460,10 +506,10 @@ export default function MapScreen() {
               </button>
               {showStylePicker && (
                 <div className="absolute right-0 top-12 bg-surface-container-lowest/95 backdrop-blur-md rounded-xl shadow-lg border border-outline-variant/30 overflow-hidden min-w-[140px]">
-                  {(Object.keys(MAP_STYLES) as StyleKey[]).map((key) => (
+                  {Object.keys(getMapStyles(MAPTILER_KEY)).map((key) => (
                     <button
                       key={key}
-                      onClick={() => switchStyle(key)}
+                      onClick={() => switchStyle(key as StyleKey)}
                       className={`w-full text-left px-4 py-2.5 text-xs font-medium transition-colors ${
                         currentStyle === key
                           ? 'bg-primary/10 text-primary'
